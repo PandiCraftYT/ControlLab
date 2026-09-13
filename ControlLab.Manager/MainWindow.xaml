@@ -17,14 +17,16 @@
             <RowDefinition Height="55"/>
         </Grid.RowDefinitions>
 
+
         <!-- ========================= -->
         <!-- ENCABEZADO -->
         <!-- ========================= -->
 
-        <Border Grid.Row="0"
-                Background="#171A21"
-                BorderBrush="#292E39"
-                BorderThickness="0,0,0,1">
+        <Border
+            Grid.Row="0"
+            Background="#171A21"
+            BorderBrush="#292E39"
+            BorderThickness="0,0,0,1">
 
             <Grid Margin="25,0">
 
@@ -33,33 +35,40 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel VerticalAlignment="Center">
+                <StackPanel
+                    VerticalAlignment="Center">
 
-                    <TextBlock Text="CONTROL LAB"
-                               FontSize="24"
-                               FontWeight="Bold"
-                               Foreground="White"/>
+                    <TextBlock
+                        Text="CONTROL LAB"
+                        FontSize="24"
+                        FontWeight="Bold"
+                        Foreground="White"/>
 
-                    <TextBlock Text="Administración del laboratorio"
-                               FontSize="12"
-                               Foreground="#8B93A1"
-                               Margin="0,3,0,0"/>
+                    <TextBlock
+                        Text="Administración del laboratorio"
+                        FontSize="12"
+                        Foreground="#8B93A1"
+                        Margin="0,3,0,0"/>
 
                 </StackPanel>
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center">
 
-                    <Ellipse Width="10"
-                             Height="10"
-                             Fill="#32D583"
-                             Margin="0,0,8,0"/>
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center">
 
-                    <TextBlock Text="Servidor conectado"
-                               Foreground="#C7CDD8"
-                               FontSize="13"
-                               VerticalAlignment="Center"/>
+                    <Ellipse
+                        Width="10"
+                        Height="10"
+                        Fill="#32D583"
+                        Margin="0,0,8,0"/>
+
+                    <TextBlock
+                        Text="Servidor conectado"
+                        Foreground="#C7CDD8"
+                        FontSize="13"
+                        VerticalAlignment="Center"/>
 
                 </StackPanel>
 
@@ -72,8 +81,9 @@
         <!-- CONTENIDO -->
         <!-- ========================= -->
 
-        <Grid Grid.Row="1"
-              Margin="25">
+        <Grid
+            Grid.Row="1"
+            Margin="25">
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -82,27 +92,35 @@
             </Grid.RowDefinitions>
 
 
+            <!-- ========================= -->
             <!-- TÍTULO -->
+            <!-- ========================= -->
 
-            <StackPanel Grid.Row="0">
+            <StackPanel
+                Grid.Row="0">
 
-                <TextBlock Text="Equipos del laboratorio"
-                           FontSize="28"
-                           FontWeight="SemiBold"
-                           Foreground="White"/>
+                <TextBlock
+                    Text="Equipos del laboratorio"
+                    FontSize="28"
+                    FontWeight="SemiBold"
+                    Foreground="White"/>
 
-                <TextBlock Text="Estado de las computadoras conectadas"
-                           FontSize="13"
-                           Foreground="#8B93A1"
-                           Margin="0,5,0,20"/>
+                <TextBlock
+                    Text="Los equipos aparecen automáticamente al conectar el Agent"
+                    FontSize="13"
+                    Foreground="#8B93A1"
+                    Margin="0,5,0,20"/>
 
             </StackPanel>
 
 
+            <!-- ========================= -->
             <!-- RESUMEN -->
+            <!-- ========================= -->
 
-            <Grid Grid.Row="1"
-                  Margin="0,0,0,20">
+            <Grid
+                Grid.Row="1"
+                Margin="0,0,0,20">
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -111,71 +129,87 @@
                 </Grid.ColumnDefinitions>
 
 
-                <Border Grid.Column="0"
-                        Background="#171A21"
-                        CornerRadius="10"
-                        Padding="20"
-                        Margin="0,0,8,0">
+                <!-- TOTAL -->
+
+                <Border
+                    Grid.Column="0"
+                    Background="#171A21"
+                    CornerRadius="10"
+                    Padding="20"
+                    Margin="0,0,8,0">
 
                     <StackPanel>
 
-                        <TextBlock Text="EQUIPOS"
-                                   FontSize="11"
-                                   Foreground="#8B93A1"/>
+                        <TextBlock
+                            Text="EQUIPOS REGISTRADOS"
+                            FontSize="11"
+                            Foreground="#8B93A1"/>
 
-                        <TextBlock x:Name="TotalEquiposText"
-                                    Text="34"
-                                    FontSize="28"
-                                   FontWeight="Bold"
-                                   Foreground="White"
-                                   Margin="0,5,0,0"/>
+                        <TextBlock
+                            x:Name="TotalEquiposText"
+                            Text="0"
+                            FontSize="28"
+                            FontWeight="Bold"
+                            Foreground="White"
+                            Margin="0,5,0,0"/>
 
                     </StackPanel>
 
                 </Border>
 
 
-                <Border Grid.Column="1"
-                        Background="#171A21"
-                        CornerRadius="10"
-                        Padding="20"
-                        Margin="8,0">
+                <!-- ONLINE -->
+
+                <Border
+                    Grid.Column="1"
+                    Background="#171A21"
+                    CornerRadius="10"
+                    Padding="20"
+                    Margin="8,0">
 
                     <StackPanel>
 
-                        <TextBlock Text="EN LÍNEA"
-                                   FontSize="11"
-                                   Foreground="#8B93A1"/>
+                        <TextBlock
+                            Text="EN LÍNEA"
+                            FontSize="11"
+                            Foreground="#8B93A1"/>
 
-                        <TextBlock x:Name="EquiposOnlineText"
-
-                                   FontSize="28"
-                                   FontWeight="Bold"
-                                   Foreground="#32D583"
-                                   Margin="0,5,0,0"/>
+                        <TextBlock
+                            x:Name="EquiposOnlineText"
+                            Text="0"
+                            FontSize="28"
+                            FontWeight="Bold"
+                            Foreground="#32D583"
+                            Margin="0,5,0,0"/>
 
                     </StackPanel>
 
                 </Border>
 
 
-                <Border Grid.Column="2"
-                        Background="#171A21"
-                        CornerRadius="10"
-                        Padding="20"
-                        Margin="8,0,0,0">
+                <!-- OFFLINE -->
+
+                <Border
+                    Grid.Column="2"
+                    Background="#171A21"
+                    CornerRadius="10"
+                    Padding="20"
+                    Margin="8,0,0,0">
 
                     <StackPanel>
 
-                        <TextBlock Text="DESCONECTADOS"
-                                   FontSize="11"
-                                   Foreground="#8B93A1"/>
+                        <TextBlock
+                            Text="DESCONECTADOS"
+                            FontSize="11"
+                            Foreground="#8B93A1"/>
 
-                        <TextBlock x:Name="EquiposOfflineText"
-                                   FontSize="28"
-                                   FontWeight="Bold"
-                                   Foreground="#F97066"
-                                   Margin="0,5,0,0"/>
+                        <TextBlock
+                            x:Name="EquiposOfflineText"
+                            Text="0"
+                            FontSize="28"
+                            FontWeight="Bold"
+                            Foreground="#F97066"
+                            Margin="0,5,0,0"/>
 
                     </StackPanel>
 
@@ -184,12 +218,17 @@
             </Grid>
 
 
-            <!-- LISTA DE PCS -->
+            <!-- ========================= -->
+            <!-- LISTA DINÁMICA -->
+            <!-- ========================= -->
 
-            <ScrollViewer Grid.Row="2"
-              VerticalScrollBarVisibility="Auto">
+            <ScrollViewer
+                Grid.Row="2"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled">
 
-                <WrapPanel x:Name="AgentsPanel"/>
+                <WrapPanel
+                    x:Name="AgentsPanel"/>
 
             </ScrollViewer>
 
@@ -200,23 +239,27 @@
         <!-- PIE -->
         <!-- ========================= -->
 
-        <Border Grid.Row="2"
-                Background="#171A21"
-                BorderBrush="#292E39"
-                BorderThickness="0,1,0,0">
+        <Border
+            Grid.Row="2"
+            Background="#171A21"
+            BorderBrush="#292E39"
+            BorderThickness="0,1,0,0">
 
             <Grid Margin="25,0">
 
-                <TextBlock Text="ControlLab • Administración del laboratorio"
-                           Foreground="#6F7785"
-                           FontSize="11"
-                           VerticalAlignment="Center"/>
+                <TextBlock
+                    Text="ControlLab • Administración del laboratorio"
+                    Foreground="#6F7785"
+                    FontSize="11"
+                    VerticalAlignment="Center"/>
 
-                <TextBlock Text="34 equipos"
-                           Foreground="#6F7785"
-                           FontSize="11"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Center"/>
+                <TextBlock
+                    x:Name="FooterEquiposText"
+                    Text="0 equipos conectados"
+                    Foreground="#6F7785"
+                    FontSize="11"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"/>
 
             </Grid>
 
