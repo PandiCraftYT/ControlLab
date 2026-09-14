@@ -109,6 +109,17 @@ public partial class AgentDetailsWindow : Window
                 : "Sin conexión";
 
         // ==========================================
+        // NOMBRE VISIBLE
+        // ==========================================
+
+        DisplayNameTextBox.Text =
+            !string.IsNullOrWhiteSpace(
+                _agent?.DisplayName
+            )
+                ? _agent!.DisplayName
+                : _machineId;
+
+        // ==========================================
         // AUTORIZACIÓN
         // ==========================================
 
@@ -124,7 +135,7 @@ public partial class AgentDetailsWindow : Window
     }
 
     // ==========================================
-    // ACTUALIZAR INTERFAZ DE AUTORIZACIÓN
+    // ACTUALIZAR AUTORIZACIÓN
     // ==========================================
 
     private void UpdateAuthorizationUI()
@@ -184,6 +195,128 @@ public partial class AgentDetailsWindow : Window
     }
 
     // ==========================================
+    // CAMBIAR NOMBRE
+    // ==========================================
+
+    private async void RenameButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        string displayName =
+            DisplayNameTextBox.Text.Trim();
+
+        // ==========================================
+        // VALIDAR NOMBRE
+        // ==========================================
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            MessageBox.Show(
+                "Escribe un nombre para el equipo.",
+
+                "ControlLab",
+
+                MessageBoxButton.OK,
+
+                MessageBoxImage.Warning
+            );
+
+            DisplayNameTextBox.Focus();
+
+            return;
+        }
+
+        if (displayName.Length > 50)
+        {
+            MessageBox.Show(
+                "El nombre no puede superar los 50 caracteres.",
+
+                "ControlLab",
+
+                MessageBoxButton.OK,
+
+                MessageBoxImage.Warning
+            );
+
+            DisplayNameTextBox.Focus();
+
+            return;
+        }
+
+        try
+        {
+            RenameButton.IsEnabled =
+                false;
+
+            RenameButton.Content =
+                "Guardando...";
+
+            // ==========================================
+            // GUARDAR
+            // ==========================================
+
+            bool success =
+                await _api.RenameAgentAsync(
+                    _machineId,
+                    displayName
+                );
+
+            if (!success)
+            {
+                MessageBox.Show(
+                    "No se pudo cambiar el nombre.\n\n" +
+                    "Comprueba que el nombre no esté siendo utilizado por otro equipo.",
+
+                    "ControlLab",
+
+                    MessageBoxButton.OK,
+
+                    MessageBoxImage.Warning
+                );
+
+                return;
+            }
+
+            // ==========================================
+            // ACTUALIZAR INTERFAZ
+            // ==========================================
+
+            DisplayNameTextBox.Text =
+                displayName;
+
+            MessageBox.Show(
+                $"El equipo ahora se llama:\n\n{displayName}",
+
+                "ControlLab",
+
+                MessageBoxButton.OK,
+
+                MessageBoxImage.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error cambiando el nombre del equipo:\n\n{ex.Message}",
+
+                "ControlLab",
+
+                MessageBoxButton.OK,
+
+                MessageBoxImage.Error
+            );
+        }
+        finally
+        {
+            RenameButton.IsEnabled =
+                true;
+
+            RenameButton.Content =
+                "Cambiar";
+        }
+    }
+
+    // ==========================================
     // AUTORIZAR / REVOCAR
     // ==========================================
 
@@ -227,7 +360,8 @@ public partial class AgentDetailsWindow : Window
                     return;
                 }
 
-                _authorized = true;
+                _authorized =
+                    true;
 
                 UpdateAuthorizationUI();
 
@@ -270,6 +404,7 @@ public partial class AgentDetailsWindow : Window
             if (result != MessageBoxResult.Yes)
             {
                 UpdateAuthorizationUI();
+
                 return;
             }
 
@@ -302,7 +437,8 @@ public partial class AgentDetailsWindow : Window
                 return;
             }
 
-            _authorized = false;
+            _authorized =
+                false;
 
             UpdateAuthorizationUI();
 
@@ -395,7 +531,8 @@ public partial class AgentDetailsWindow : Window
             ScreenButton.Content =
                 "Recibiendo pantalla...";
 
-            byte[]? imageBytes = null;
+            byte[]? imageBytes =
+                null;
 
             for (
                 int attempt = 0;
@@ -411,12 +548,15 @@ public partial class AgentDetailsWindow : Window
                             _machineId
                         );
 
-                    if (imageBytes.Length > 0)
+                    if (
+                        imageBytes.Length > 0
+                    )
                     {
                         break;
                     }
 
-                    imageBytes = null;
+                    imageBytes =
+                        null;
                 }
                 catch
                 {

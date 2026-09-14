@@ -97,6 +97,40 @@ public class ControlLabApi
 
         return response.IsSuccessStatusCode;
     }
+
+    // ==========================================
+    // CAMBIAR NOMBRE DEL EQUIPO
+    // ==========================================
+
+    public async Task<bool> RenameAgentAsync(
+        string machineId,
+        string displayName,
+        CancellationToken cancellationToken = default)
+    {
+        var payload =
+            JsonSerializer.Serialize(
+                new
+                {
+                    displayName
+                }
+            );
+
+        using var content =
+            new StringContent(
+                payload,
+                System.Text.Encoding.UTF8,
+                "application/json"
+            );
+
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/rename",
+                content,
+                cancellationToken
+            );
+
+        return response.IsSuccessStatusCode;
+    }
     // ==========================================
     // CERRAR
     // ==========================================

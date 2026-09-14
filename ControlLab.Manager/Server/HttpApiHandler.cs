@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ControlLab.Manager.Data;
+
 namespace ControlLab.Manager.Server;
 
 public sealed class HttpApiHandler
@@ -28,8 +29,15 @@ public sealed class HttpApiHandler
     {
         try
         {
-            string path = context.Request.Url?.AbsolutePath ?? "/";
-            string method = context.Request.HttpMethod;
+            string path =
+                context.Request.Url?.AbsolutePath ?? "/";
+
+            string method =
+                context.Request.HttpMethod;
+
+            // ==========================================
+            // SERVIDOR
+            // ==========================================
 
             if (method == "GET" && path == "/")
             {
@@ -37,31 +45,52 @@ public sealed class HttpApiHandler
                     context,
                     "ControlLab Server funcionando correctamente."
                 );
+
                 return;
             }
+
+            // ==========================================
+            // LISTAR EQUIPOS
+            // ==========================================
 
             if (method == "GET" && path == "/api/agents")
             {
                 await SendAgentsAsync(context);
+
                 return;
             }
+
+            // ==========================================
+            // VALIDAR RUTA
+            // ==========================================
 
             if (!path.StartsWith(
                     "/api/agents/",
                     StringComparison.OrdinalIgnoreCase))
             {
-                await SendErrorAsync(context, 404, "Not Found");
+                await SendErrorAsync(
+                    context,
+                    404,
+                    "Not Found"
+                );
+
                 return;
             }
 
-            string[] parts = path.Split(
-                '/',
-                StringSplitOptions.RemoveEmptyEntries
-            );
+            string[] parts =
+                path.Split(
+                    '/',
+                    StringSplitOptions.RemoveEmptyEntries
+                );
 
             if (parts.Length < 4)
             {
-                await SendErrorAsync(context, 404, "Ruta no válida.");
+                await SendErrorAsync(
+                    context,
+                    404,
+                    "Ruta no válida."
+                );
+
                 return;
             }
 
@@ -70,14 +99,20 @@ public sealed class HttpApiHandler
 
             string action =
                 parts[3].ToLowerInvariant();
+
             // ==========================================
-            // AUTORIZAR / REVOCAR EQUIPO
+            // AUTORIZAR EQUIPO
             // ==========================================
 
-            if (method == "POST" && action == "authorize")
+            if (
+                method == "POST" &&
+                action == "authorize"
+            )
             {
                 bool success =
-                    _database.AuthorizeAgent(machineId);
+                    _database.AuthorizeAgent(
+                        machineId
+                    );
 
                 if (!success)
                 {
@@ -103,10 +138,19 @@ public sealed class HttpApiHandler
                 return;
             }
 
-            if (method == "POST" && action == "revoke")
+            // ==========================================
+            // REVOCAR AUTORIZACIÓN
+            // ==========================================
+
+            if (
+                method == "POST" &&
+                action == "revoke"
+            )
             {
                 bool success =
-                    _database.RevokeAgent(machineId);
+                    _database.RevokeAgent(
+                        machineId
+                    );
 
                 if (!success)
                 {
@@ -131,8 +175,32 @@ public sealed class HttpApiHandler
 
                 return;
             }
-            if (method == "POST" &&
-                (action == "ping" || action == "screen"))
+
+            // ==========================================
+            // CAMBIAR NOMBRE DEL EQUIPO
+            // ==========================================
+
+            if (
+                method == "POST" &&
+                action == "rename"
+            )
+            {
+                await RenameAgentAsync(
+                    context,
+                    machineId
+                );
+
+                return;
+            }
+
+            // ==========================================
+            // PING / CAPTURA
+            // ==========================================
+
+            if (
+                method == "POST" &&
+                (action == "ping" || action == "screen")
+            )
             {
                 string command =
                     action == "ping"
@@ -148,14 +216,26 @@ public sealed class HttpApiHandler
                 return;
             }
 
-            if (method == "GET" && action == "screen")
+            // ==========================================
+            // OBTENER CAPTURA
+            // ==========================================
+
+            if (
+                method == "GET" &&
+                action == "screen"
+            )
             {
                 await SendScreenAsync(
                     context,
                     machineId
                 );
+
                 return;
             }
+
+            // ==========================================
+            // ACCIÓN NO ENCONTRADA
+            // ==========================================
 
             await SendErrorAsync(
                 context,
@@ -165,7 +245,9 @@ public sealed class HttpApiHandler
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error HTTP: {ex.Message}");
+            Console.WriteLine(
+                $"❌ Error HTTP: {ex.Message}"
+            );
 
             try
             {
@@ -181,14 +263,150 @@ public sealed class HttpApiHandler
         }
     }
 
+    // ==========================================
+    // CAMBIAR NOMBRE
+    // ==========================================
+
+    private async Task RenameAgentAsync(
+        HttpListenerContext context,
+        string machineId)
+    {
+        // ==========================================
+        // VALIDAR LONGITUD DEL CONTENIDO
+        // ==========================================
+
+        if (
+            context.Request.ContentLength64 > 4096
+        )
+        {
+            await SendErrorAsync(
+                context,
+                413,
+                "La solicitud es demasiado grande."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // LEER JSON
+        // ==========================================
+
+        RenameAgentRequest? request;
+
+        try
+        {
+            request =
+                await JsonSerializer.DeserializeAsync<RenameAgentRequest>(
+                    context.Request.InputStream,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }
+                );
+        }
+        catch (JsonException)
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "El JSON enviado no es válido."
+            );
+
+            return;
+        }
+
+        if (request == null)
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "No se recibió información."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // VALIDAR NOMBRE
+        // ==========================================
+
+        string displayName =
+            request.DisplayName?.Trim() ?? "";
+
+        if (displayName.Length == 0)
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "El nombre del equipo no puede estar vacío."
+            );
+
+            return;
+        }
+
+        if (displayName.Length > 50)
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "El nombre del equipo no puede superar los 50 caracteres."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // ACTUALIZAR BASE DE DATOS
+        // ==========================================
+
+        bool success =
+            _database.RenameAgent(
+                machineId,
+                displayName
+            );
+
+        if (!success)
+        {
+            await SendErrorAsync(
+                context,
+                409,
+                "No se pudo cambiar el nombre. " +
+                "El equipo puede no existir o el nombre ya estar en uso."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // RESPUESTA
+        // ==========================================
+
+        await SendJsonAsync(
+            context,
+            new
+            {
+                success = true,
+                machineId,
+                displayName
+            }
+        );
+    }
+
+    // ==========================================
+    // OBTENER EQUIPOS
+    // ==========================================
+
     private async Task SendAgentsAsync(
         HttpListenerContext context)
     {
         // Equipos guardados permanentemente en SQLite
+
         var registeredAgents =
             _database.GetAgents();
 
         // Equipos conectados actualmente
+
         var connectedAgents =
             _getAgents()
                 .ToDictionary(
@@ -234,7 +452,9 @@ public sealed class HttpApiHandler
                             lastHeartbeat =
                                 onlineAgent.LastHeartbeat,
 
-                            status = "online",
+                            status =
+                                "online",
+
                             authorized =
                                 registered.Authorized
                         };
@@ -267,13 +487,16 @@ public sealed class HttpApiHandler
                         lastHeartbeat =
                             registered.LastSeen,
 
-                        status = "offline",
+                        status =
+                            "offline",
+
                         authorized =
                             registered.Authorized
                     };
                 })
                 .OrderBy(
-                    agent => agent.displayName,
+                    agent =>
+                        agent.displayName,
                     StringComparer.OrdinalIgnoreCase
                 )
                 .ToList();
@@ -282,11 +505,17 @@ public sealed class HttpApiHandler
             context,
             new
             {
-                total = agents.Count,
+                total =
+                    agents.Count,
+
                 agents
             }
         );
     }
+
+    // ==========================================
+    // OBTENER CAPTURA
+    // ==========================================
 
     private async Task SendScreenAsync(
         HttpListenerContext context,
@@ -302,6 +531,7 @@ public sealed class HttpApiHandler
                 404,
                 $"No hay una captura disponible para {machineId}"
             );
+
             return;
         }
 
@@ -310,7 +540,9 @@ public sealed class HttpApiHandler
         try
         {
             imageBytes =
-                Convert.FromBase64String(screen.Image);
+                Convert.FromBase64String(
+                    screen.Image
+                );
         }
         catch
         {
@@ -319,13 +551,19 @@ public sealed class HttpApiHandler
                 500,
                 "La captura recibida no es válida."
             );
+
             return;
         }
 
-        context.Response.StatusCode = 200;
-        context.Response.ContentType = "image/jpeg";
+        context.Response.StatusCode =
+            200;
+
+        context.Response.ContentType =
+            "image/jpeg";
+
         context.Response.ContentLength64 =
             imageBytes.Length;
+
         context.Response.Headers["Cache-Control"] =
             "no-store";
 
@@ -334,6 +572,10 @@ public sealed class HttpApiHandler
 
         context.Response.Close();
     }
+
+    // ==========================================
+    // RESPUESTA JSON
+    // ==========================================
 
     internal static async Task SendJsonAsync(
         HttpListenerContext context,
@@ -345,9 +587,12 @@ public sealed class HttpApiHandler
                 JsonSerializer.Serialize(data)
             );
 
-        context.Response.StatusCode = statusCode;
+        context.Response.StatusCode =
+            statusCode;
+
         context.Response.ContentType =
             "application/json; charset=utf-8";
+
         context.Response.ContentLength64 =
             bytes.Length;
 
@@ -356,6 +601,10 @@ public sealed class HttpApiHandler
 
         context.Response.Close();
     }
+
+    // ==========================================
+    // RESPUESTA TEXTO
+    // ==========================================
 
     internal static async Task SendTextAsync(
         HttpListenerContext context,
@@ -365,9 +614,12 @@ public sealed class HttpApiHandler
         byte[] bytes =
             Encoding.UTF8.GetBytes(text);
 
-        context.Response.StatusCode = statusCode;
+        context.Response.StatusCode =
+            statusCode;
+
         context.Response.ContentType =
             "text/plain; charset=utf-8";
+
         context.Response.ContentLength64 =
             bytes.Length;
 
@@ -376,6 +628,10 @@ public sealed class HttpApiHandler
 
         context.Response.Close();
     }
+
+    // ==========================================
+    // ERROR
+    // ==========================================
 
     private static Task SendErrorAsync(
         HttpListenerContext context,
@@ -392,4 +648,13 @@ public sealed class HttpApiHandler
             statusCode
         );
     }
+}
+
+// ==========================================
+// MODELO PARA CAMBIAR NOMBRE
+// ==========================================
+
+public sealed class RenameAgentRequest
+{
+    public string? DisplayName { get; set; }
 }

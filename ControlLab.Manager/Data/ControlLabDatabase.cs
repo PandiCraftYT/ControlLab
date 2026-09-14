@@ -654,8 +654,75 @@ public sealed class ControlLabDatabase
 
         return Convert.ToInt32(result) == 1;
     }
-}
 
+    // ==========================================
+    // CAMBIAR NOMBRE DEL EQUIPO
+    // ==========================================
+
+    public bool RenameAgent(
+        string machineId,
+        string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(machineId))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(displayName))
+            return false;
+
+        displayName =
+            displayName.Trim();
+
+        using var connection =
+            new SqliteConnection(
+                _connectionString
+            );
+
+        connection.Open();
+
+        using var command =
+            connection.CreateCommand();
+
+        command.CommandText =
+            "UPDATE Agents " +
+            "SET DisplayName = $displayName " +
+            "WHERE MachineId = $machineId;";
+
+        command.Parameters.AddWithValue(
+            "$displayName",
+            displayName
+        );
+
+        command.Parameters.AddWithValue(
+            "$machineId",
+            machineId
+        );
+
+        try
+        {
+            int affectedRows =
+                command.ExecuteNonQuery();
+
+            if (affectedRows > 0)
+            {
+                Console.WriteLine(
+                    $"🏷️ Nombre actualizado: " +
+                    $"{machineId} → {displayName}"
+                );
+            }
+
+            return affectedRows > 0;
+        }
+        catch (SqliteException ex)
+        {
+            Console.WriteLine(
+                $"❌ No se pudo cambiar el nombre de " +
+                $"{machineId}: {ex.Message}"
+            );
+
+            return false;
+        }
+    }
+}
 // ==========================================
 // AGENT REGISTRADO
 // ==========================================

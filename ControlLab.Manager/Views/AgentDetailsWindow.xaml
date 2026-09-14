@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ControlLab"
         Width="500"
-        Height="650"
+        Height="730"
         WindowStartupLocation="CenterOwner"
         Background="#0F1117"
         ResizeMode="NoResize">
@@ -48,7 +48,7 @@
                     FontSize="12"
                     FontWeight="SemiBold"
                     Foreground="#FFB446"/>
-                
+
             </Border>
 
         </StackPanel>
@@ -58,8 +58,48 @@
         <StackPanel
             Grid.Row="1">
 
+            <!-- NOMBRE VISIBLE -->
+
             <TextBlock
                 Text="NOMBRE DEL EQUIPO"
+                FontSize="10"
+                Foreground="#8B93A1"
+                Margin="0,0,0,6"/>
+
+            <Grid Margin="0,0,0,18">
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="110"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox
+                    x:Name="DisplayNameTextBox"
+                    Height="38"
+                    FontSize="14"
+                    Padding="10,6"
+                    Background="#171A21"
+                    Foreground="White"
+                    BorderBrush="#292E39"
+                    MaxLength="50"
+                    VerticalContentAlignment="Center"/>
+
+                <Button
+                x:Name="RenameButton"
+                Grid.Column="1"
+                Content="Cambiar"
+                Height="38"
+                Margin="10,0,0,0"
+                FontSize="13"
+                Click="RenameButton_Click"/>
+
+            </Grid>
+
+
+            <!-- HOSTNAME -->
+
+            <TextBlock
+                Text="HOSTNAME"
                 FontSize="10"
                 Foreground="#8B93A1"
                 Margin="0,0,0,4"/>
@@ -70,6 +110,8 @@
                 Foreground="White"
                 Margin="0,0,0,15"/>
 
+
+            <!-- SISTEMA -->
 
             <TextBlock
                 Text="SISTEMA"
@@ -84,6 +126,8 @@
                 Margin="0,0,0,15"/>
 
 
+            <!-- VERSIÓN -->
+
             <TextBlock
                 Text="VERSIÓN DEL AGENTE"
                 FontSize="10"
@@ -96,6 +140,8 @@
                 Foreground="White"
                 Margin="0,0,0,15"/>
 
+
+            <!-- HEARTBEAT -->
 
             <TextBlock
                 Text="ÚLTIMO HEARTBEAT"
