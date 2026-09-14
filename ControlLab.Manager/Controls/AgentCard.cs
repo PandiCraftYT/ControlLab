@@ -19,8 +19,7 @@ public static class AgentCard
             agent != null &&
             agent.Status.Equals(
                 "online",
-                StringComparison.OrdinalIgnoreCase
-            );
+                StringComparison.OrdinalIgnoreCase);
 
         bool authorized =
             agent != null &&
@@ -31,31 +30,30 @@ public static class AgentCard
                 ? agent.DisplayName
                 : machineId;
 
+
         // ==========================================
-        // COLOR DE CONEXIÓN
+        // COLORES DE ESTADO
         // ==========================================
 
         var statusColor =
             online
-                ? new SolidColorBrush(
-                    Color.FromRgb(50, 213, 131))
-                : new SolidColorBrush(
-                    Color.FromRgb(249, 112, 102));
-
-        // ==========================================
-        // COLOR DE AUTORIZACIÓN
-        // ==========================================
+                ? Color.FromRgb(50, 213, 131)
+                : Color.FromRgb(249, 112, 102);
 
         var authorizationColor =
             authorized
-                ? new SolidColorBrush(
-                    Color.FromRgb(50, 213, 131))
-                : new SolidColorBrush(
-                    Color.FromRgb(255, 180, 70));
+                ? Color.FromRgb(50, 213, 131)
+                : Color.FromRgb(255, 180, 70);
 
-        var secondaryColor =
+
+        var cardBackground =
             new SolidColorBrush(
-                Color.FromRgb(139, 147, 161));
+                Color.FromRgb(17, 24, 33));
+
+        var borderBrush =
+            new SolidColorBrush(
+                Color.FromRgb(32, 43, 55));
+
 
         // ==========================================
         // TARJETA
@@ -63,28 +61,56 @@ public static class AgentCard
 
         var card = new Border
         {
-            Width = 225,
-            Height = 180,
+            Width = 250,
+            Height = 190,
 
-            Background =
-                new SolidColorBrush(
-                    Color.FromRgb(23, 26, 33)),
+            Background = cardBackground,
 
-            CornerRadius =
-                new CornerRadius(12),
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1),
 
-            Margin =
-                new Thickness(0, 0, 15, 15),
+            CornerRadius = new CornerRadius(12),
 
-            Padding =
-                new Thickness(16),
+            Margin = new Thickness(0, 0, 14, 14),
 
-            Cursor =
-                Cursors.Hand
+            Padding = new Thickness(16),
+
+            Cursor = Cursors.Hand
         };
 
+
+        // ==========================================
+        // CONTENIDO
+        // ==========================================
+
         var content =
-            new StackPanel();
+            new Grid();
+
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height = new GridLength(1, GridUnitType.Star)
+            });
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height = GridLength.Auto
+            });
+
 
         // ==========================================
         // ENCABEZADO
@@ -102,10 +128,9 @@ public static class AgentCard
         header.ColumnDefinitions.Add(
             new ColumnDefinition
             {
-                Width =
-                    new GridLength(
-                        1,
-                        GridUnitType.Star)
+                Width = new GridLength(
+                    1,
+                    GridUnitType.Star)
             });
 
         header.ColumnDefinitions.Add(
@@ -114,46 +139,168 @@ public static class AgentCard
                 Width = GridLength.Auto
             });
 
+
         // ==========================================
-        // INDICADOR ONLINE / OFFLINE
+        // ICONO PC
         // ==========================================
 
-        var indicator =
-            new Ellipse
+        var computerIcon =
+            new Border
             {
-                Width = 10,
-                Height = 10,
+                Width = 42,
+                Height = 42,
 
-                Fill =
-                    statusColor,
+                Background =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            19,
+                            33,
+                            47)),
 
-                Margin =
-                    new Thickness(
-                        0,
-                        5,
-                        8,
-                        0)
+                BorderBrush =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            35,
+                            59,
+                            80)),
+
+                BorderThickness =
+                    new Thickness(1),
+
+                CornerRadius =
+                    new CornerRadius(9)
             };
 
+
+        var computer =
+            new Grid
+            {
+                Width = 30,
+                Height = 30
+            };
+
+
+        // Monitor
+
+        var monitor =
+            new Border
+            {
+                Width = 25,
+                Height = 18,
+
+                BorderBrush =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            85,
+                            169,
+                            255)),
+
+                BorderThickness =
+                    new Thickness(2),
+
+                CornerRadius =
+                    new CornerRadius(2),
+
+                HorizontalAlignment =
+                    HorizontalAlignment.Center,
+
+                VerticalAlignment =
+                    VerticalAlignment.Top,
+
+                Margin =
+                    new Thickness(0, 2, 0, 0)
+            };
+
+        computer.Children.Add(monitor);
+
+
+        // Soporte
+
+        var support =
+            new Rectangle
+            {
+                Width = 2,
+                Height = 6,
+
+                Fill =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            85,
+                            169,
+                            255)),
+
+                HorizontalAlignment =
+                    HorizontalAlignment.Center,
+
+                VerticalAlignment =
+                    VerticalAlignment.Top,
+
+                Margin =
+                    new Thickness(0, 20, 0, 0)
+            };
+
+        computer.Children.Add(support);
+
+
+        // Base
+
+        var baseLine =
+            new Rectangle
+            {
+                Width = 15,
+                Height = 2,
+
+                Fill =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            85,
+                            169,
+                            255)),
+
+                HorizontalAlignment =
+                    HorizontalAlignment.Center,
+
+                VerticalAlignment =
+                    VerticalAlignment.Bottom,
+
+                Margin =
+                    new Thickness(0, 0, 0, 2)
+            };
+
+        computer.Children.Add(baseLine);
+
+
+        computerIcon.Child = computer;
+
         Grid.SetColumn(
-            indicator,
+            computerIcon,
             0);
 
         header.Children.Add(
-            indicator);
+            computerIcon);
+
 
         // ==========================================
         // NOMBRE
         // ==========================================
 
+        var namePanel =
+            new StackPanel
+            {
+                Margin =
+                    new Thickness(11, 1, 6, 0),
+
+                VerticalAlignment =
+                    VerticalAlignment.Center
+            };
+
+
         var machineName =
             new TextBlock
             {
-                Text =
-                    displayName,
+                Text = displayName,
 
-                FontSize =
-                    17,
+                FontSize = 15,
 
                 FontWeight =
                     FontWeights.SemiBold,
@@ -165,15 +312,45 @@ public static class AgentCard
                     TextTrimming.CharacterEllipsis
             };
 
+        namePanel.Children.Add(
+            machineName);
+
+
+        var machineIdText =
+            new TextBlock
+            {
+                Text = machineId,
+
+                FontSize = 9,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            101,
+                            120,
+                            141)),
+
+                TextTrimming =
+                    TextTrimming.CharacterEllipsis,
+
+                Margin =
+                    new Thickness(0, 2, 0, 0)
+            };
+
+        namePanel.Children.Add(
+            machineIdText);
+
+
         Grid.SetColumn(
-            machineName,
+            namePanel,
             1);
 
         header.Children.Add(
-            machineName);
+            namePanel);
+
 
         // ==========================================
-        // ESTADO CONEXIÓN
+        // ESTADO ONLINE / OFFLINE
         // ==========================================
 
         var status =
@@ -185,16 +362,16 @@ public static class AgentCard
                         : "OFFLINE",
 
                 Foreground =
-                    statusColor,
+                    new SolidColorBrush(
+                        statusColor),
 
-                FontSize =
-                    10,
+                FontSize = 9,
 
                 FontWeight =
                     FontWeights.Bold,
 
                 VerticalAlignment =
-                    VerticalAlignment.Center
+                    VerticalAlignment.Top
             };
 
         Grid.SetColumn(
@@ -204,11 +381,17 @@ public static class AgentCard
         header.Children.Add(
             status);
 
+
+        Grid.SetRow(
+            header,
+            0);
+
         content.Children.Add(
             header);
 
+
         // ==========================================
-        // ESTADO DE AUTORIZACIÓN
+        // AUTORIZACIÓN
         // ==========================================
 
         var authorization =
@@ -220,28 +403,66 @@ public static class AgentCard
                         : "⚠ PENDIENTE",
 
                 Foreground =
-                    authorizationColor,
+                    new SolidColorBrush(
+                        authorizationColor),
 
-                FontSize =
-                    11,
+                FontSize = 10,
 
                 FontWeight =
                     FontWeights.Bold,
 
                 Margin =
                     new Thickness(
-                        18,
-                        7,
+                        53,
+                        5,
                         0,
                         0)
             };
 
+        Grid.SetRow(
+            authorization,
+            1);
+
         content.Children.Add(
             authorization);
 
+
         // ==========================================
+        // INFORMACIÓN
+        // ==========================================
+
+        var info =
+            new StackPanel
+            {
+                Margin =
+                    new Thickness(
+                        0,
+                        10,
+                        0,
+                        0)
+            };
+
+
         // HOSTNAME
-        // ==========================================
+
+        var hostnameLabel =
+            new TextBlock
+            {
+                Text = "HOSTNAME",
+
+                FontSize = 8,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            101,
+                            120,
+                            141))
+            };
+
+        info.Children.Add(
+            hostnameLabel);
+
 
         var hostname =
             new TextBlock
@@ -251,13 +472,16 @@ public static class AgentCard
                         ? agent!.Hostname
                         : "Sin conexión",
 
+                FontSize = 11,
+
                 Foreground =
                     online
                         ? Brushes.White
-                        : secondaryColor,
-
-                FontSize =
-                    12,
+                        : new SolidColorBrush(
+                            Color.FromRgb(
+                                102,
+                                119,
+                                138)),
 
                 TextTrimming =
                     TextTrimming.CharacterEllipsis,
@@ -265,42 +489,108 @@ public static class AgentCard
                 Margin =
                     new Thickness(
                         0,
-                        10,
+                        2,
                         0,
-                        5)
+                        7)
             };
 
-        content.Children.Add(
+        info.Children.Add(
             hostname);
 
-        // ==========================================
+
         // HEARTBEAT
-        // ==========================================
+
+        var heartbeatLabel =
+            new TextBlock
+            {
+                Text = "ÚLTIMO HEARTBEAT",
+
+                FontSize = 8,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            101,
+                            120,
+                            141))
+            };
+
+        info.Children.Add(
+            heartbeatLabel);
+
 
         var heartbeat =
             new TextBlock
             {
                 Text =
                     online
-                        ? $"Heartbeat: {agent!.LastHeartbeat}"
-                        : "Heartbeat: —",
+                        ? agent!.LastHeartbeat
+                        : "—",
+
+                FontSize = 10,
 
                 Foreground =
-                    secondaryColor,
-
-                FontSize =
-                    10,
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            147,
+                            164,
+                            184)),
 
                 TextTrimming =
-                    TextTrimming.CharacterEllipsis
+                    TextTrimming.CharacterEllipsis,
+
+                Margin =
+                    new Thickness(
+                        0,
+                        2,
+                        0,
+                        0)
             };
 
-        content.Children.Add(
+        info.Children.Add(
             heartbeat);
 
+
+        Grid.SetRow(
+            info,
+            2);
+
+        content.Children.Add(
+            info);
+
+
         // ==========================================
-        // VERSIÓN
+        // PIE DE TARJETA
         // ==========================================
+
+        var footer =
+            new Grid
+            {
+                Margin =
+                    new Thickness(
+                        0,
+                        7,
+                        0,
+                        0)
+            };
+
+
+        footer.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star)
+            });
+
+        footer.ColumnDefinitions.Add(
+            new ColumnDefinition
+            {
+                Width =
+                    GridLength.Auto
+            });
+
 
         var version =
             new TextBlock
@@ -310,39 +600,102 @@ public static class AgentCard
                         ? $"Agente v{agent!.AgentVersion}"
                         : "Agente no disponible",
 
+                FontSize = 9,
+
                 Foreground =
-                    secondaryColor,
-
-                FontSize =
-                    10,
-
-                Margin =
-                    new Thickness(
-                        0,
-                        5,
-                        0,
-                        0)
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            102,
+                            119,
+                            138))
             };
 
-        content.Children.Add(
+        Grid.SetColumn(
+            version,
+            0);
+
+        footer.Children.Add(
             version);
 
-        // ==========================================
-        // ASIGNAR CONTENIDO
-        // ==========================================
 
-        card.Child =
-            content;
-
-        // ==========================================
-        // CLICK
-        // ==========================================
-
-        card.MouseLeftButtonUp +=
-            (_, _) =>
+        var arrow =
+            new TextBlock
             {
-                onClick();
+                Text = "→",
+
+                FontSize = 16,
+
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            85,
+                            169,
+                            255)),
+
+                VerticalAlignment =
+                    VerticalAlignment.Center
             };
+
+        Grid.SetColumn(
+            arrow,
+            1);
+
+        footer.Children.Add(
+            arrow);
+
+
+        Grid.SetRow(
+            footer,
+            3);
+
+        content.Children.Add(
+            footer);
+
+
+        card.Child = content;
+
+
+        // ==========================================
+        // EFECTO AL PASAR EL MOUSE
+        // ==========================================
+
+        card.MouseEnter += (_, _) =>
+        {
+            card.Background =
+                new SolidColorBrush(
+                    Color.FromRgb(
+                        23,
+                        34,
+                        46));
+
+            card.BorderBrush =
+                new SolidColorBrush(
+                    Color.FromRgb(
+                        53,
+                        82,
+                        108));
+        };
+
+
+        card.MouseLeave += (_, _) =>
+        {
+            card.Background =
+                cardBackground;
+
+            card.BorderBrush =
+                borderBrush;
+        };
+
+
+        // ==========================================
+        // ABRIR DETALLES
+        // ==========================================
+
+        card.MouseLeftButtonUp += (_, _) =>
+        {
+            onClick();
+        };
+
 
         return card;
     }

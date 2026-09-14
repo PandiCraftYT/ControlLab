@@ -149,6 +149,36 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
     // ==========================================
+    // REINICIAR SESION
+    // ==========================================
+    public async Task<bool> RestartAgentAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/restart",
+                null,
+                cancellationToken);
+
+        return response.IsSuccessStatusCode;
+    }
+    // ==========================================
+    // APAGAR SESION
+    // ==========================================
+    public async Task<bool> ShutdownAgentAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/shutdown",
+                null,
+                cancellationToken);
+
+        return response.IsSuccessStatusCode;
+    }
+    // ==========================================
     // CERRAR
     // ==========================================
 

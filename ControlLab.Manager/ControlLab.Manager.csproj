@@ -20,6 +20,7 @@
   <None Update="config.json">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
+  <Resource Include="Assets\ControlLab.ico" />
 </ItemGroup>
 
 </Project>

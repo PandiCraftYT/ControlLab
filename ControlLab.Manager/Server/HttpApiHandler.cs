@@ -99,10 +99,79 @@ public sealed class HttpApiHandler
 
             string action =
                 parts[3].ToLowerInvariant();
+            
+            // ==========================================
+            // REINICIAR PC
+            // ==========================================
+
+            if (
+                method == "POST" &&
+                action == "restart"
+            )
+            {
+                var registeredAgent =
+                    _database.GetAgents()
+                        .FirstOrDefault(
+                            agent =>
+                                agent.MachineId.Equals(
+                                    machineId,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                        );
+
+                if (registeredAgent == null)
+                {
+                    await SendErrorAsync(
+                        context,
+                        404,
+                        "Equipo no encontrado."
+                    );
+                    return;
+                }
+
+                if (!registeredAgent.Authorized)
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+                    return;
+                }
+
+                bool online =
+                    _getAgents()
+                        .Any(
+                            agent =>
+                                agent.MachineId.Equals(
+                                    machineId,
+                                    StringComparison.OrdinalIgnoreCase
+                                ) &&
+                                agent.Socket.State ==
+                                    WebSocketState.Open
+                        );
+
+                if (!online)
+                {
+                    await SendErrorAsync(
+                        context,
+                        409,
+                        "El equipo no está conectado."
+                    );
+                    return;
+                }
+
+                await _sendCommand(
+                    context,
+                    machineId,
+                    "RESTART_PC"
+                );
+
+                return;
+            }
             // ==========================================
             // BLOQUEAR SESIÓN
             // ==========================================
-
             if (
                 method == "POST" &&
                 action == "lock"
@@ -179,6 +248,71 @@ public sealed class HttpApiHandler
                     context,
                     machineId,
                     "LOCK_SESSION"
+                );
+
+                return;
+            }
+            if (
+                method == "POST" &&
+                action == "shutdown"
+            )
+            {
+                var registeredAgent =
+                    _database.GetAgents()
+                        .FirstOrDefault(
+                            agent =>
+                                agent.MachineId.Equals(
+                                    machineId,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                        );
+
+                if (registeredAgent == null)
+                {
+                    await SendErrorAsync(
+                        context,
+                        404,
+                        "Equipo no encontrado."
+                    );
+                    return;
+                }
+
+                if (!registeredAgent.Authorized)
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+                    return;
+                }
+
+                bool online =
+                    _getAgents()
+                        .Any(
+                            agent =>
+                                agent.MachineId.Equals(
+                                    machineId,
+                                    StringComparison.OrdinalIgnoreCase
+                                ) &&
+                                agent.Socket.State ==
+                                    WebSocketState.Open
+                        );
+
+                if (!online)
+                {
+                    await SendErrorAsync(
+                        context,
+                        409,
+                        "El equipo no está conectado."
+                    );
+                    return;
+                }
+
+                await _sendCommand(
+                    context,
+                    machineId,
+                    "SHUTDOWN_PC"
                 );
 
                 return;

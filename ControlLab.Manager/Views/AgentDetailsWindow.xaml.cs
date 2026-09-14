@@ -49,11 +49,27 @@ public partial class AgentDetailsWindow : Window
     private void LoadAgentInformation()
     {
         bool online =
-            _agent != null &&
-            _agent.Status.Equals(
-                "online",
-                StringComparison.OrdinalIgnoreCase
-            );
+        _agent != null &&
+        _agent.Status.Equals(
+            "online",
+            StringComparison.OrdinalIgnoreCase
+        );
+
+        ScreenButton.IsEnabled =
+            online &&
+            _authorized;
+
+        LockSessionButton.IsEnabled =
+            online &&
+            _authorized;
+
+        RestartButton.IsEnabled =
+            online &&
+            _authorized;
+
+        ShutdownButton.IsEnabled =
+            online &&
+            _authorized;
 
         MachineIdText.Text =
             _machineId;
@@ -118,6 +134,13 @@ public partial class AgentDetailsWindow : Window
             )
                 ? _agent!.DisplayName
                 : _machineId;
+        
+        DisplayNameInfoText.Text =
+            !string.IsNullOrWhiteSpace(
+                _agent?.DisplayName
+            )
+                ? _agent!.DisplayName
+                : _machineId;
 
         // ==========================================
         // AUTORIZACIÓN
@@ -134,8 +157,12 @@ public partial class AgentDetailsWindow : Window
             _authorized;
         
         LockSessionButton.IsEnabled =
-        online &&
-        _authorized;
+            online &&
+            _authorized;
+
+        RestartButton.IsEnabled =
+            online &&
+            _authorized;
     }
 
     // ==========================================
@@ -287,7 +314,8 @@ public partial class AgentDetailsWindow : Window
 
             DisplayNameTextBox.Text =
                 displayName;
-
+            DisplayNameInfoText.Text =
+                displayName;
             MessageBox.Show(
                 $"El equipo ahora se llama:\n\n{displayName}",
 
@@ -369,12 +397,28 @@ public partial class AgentDetailsWindow : Window
 
                 UpdateAuthorizationUI();
 
-                ScreenButton.IsEnabled =
+                bool online =
                     _agent != null &&
                     _agent.Status.Equals(
                         "online",
                         StringComparison.OrdinalIgnoreCase
                     );
+
+                ScreenButton.IsEnabled =
+                    online &&
+                    _authorized;
+
+                LockSessionButton.IsEnabled =
+                    online &&
+                    _authorized;
+
+                RestartButton.IsEnabled =
+                    online &&
+                    _authorized;
+
+                ShutdownButton.IsEnabled =
+                    online &&
+                    _authorized;
 
                 MessageBox.Show(
                     $"El equipo {_machineId} ha sido autorizado correctamente.",
@@ -446,8 +490,10 @@ public partial class AgentDetailsWindow : Window
 
             UpdateAuthorizationUI();
 
-            ScreenButton.IsEnabled =
-                false;
+            ScreenButton.IsEnabled = false;
+            LockSessionButton.IsEnabled = false;
+            RestartButton.IsEnabled = false;
+            ShutdownButton.IsEnabled = false;
 
             MessageBox.Show(
                 $"La autorización de {_machineId} ha sido revocada.",
@@ -554,6 +600,145 @@ public partial class AgentDetailsWindow : Window
 
             LockSessionButton.Content =
                 "🔒 Bloquear sesión";
+        }
+    }
+
+    // ==========================================
+    // REINICIAR PC
+    // ==========================================
+
+    private async void RestartButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var result =
+            MessageBox.Show(
+                $"¿Deseas reiniciar {_machineId}?\n\n" +
+                "La computadora se reiniciará inmediatamente.",
+                "Reiniciar PC",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning
+            );
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            RestartButton.IsEnabled = false;
+            RestartButton.Content = "Reiniciando...";
+
+            bool success =
+                await _api.RestartAgentAsync(
+                    _machineId
+                );
+
+            if (!success)
+            {
+                MessageBox.Show(
+                    $"No se pudo reiniciar {_machineId}.\n\n" +
+                    "Comprueba que el equipo esté conectado y autorizado.",
+                    "ControlLab",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
+
+                return;
+            }
+
+            MessageBox.Show(
+                $"Se ha enviado la orden de reinicio a {_machineId}.",
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error reiniciando {_machineId}:\n\n" +
+                ex.Message,
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+        finally
+        {
+            RestartButton.IsEnabled =
+            _agent != null &&
+            _agent.Status.Equals(
+                "online",
+                StringComparison.OrdinalIgnoreCase
+            ) &&
+            _authorized;
+        }
+    }
+
+    private async void ShutdownButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var result =
+            MessageBox.Show(
+                $"¿Deseas apagar {_machineId}?\n\n" +
+                "La computadora se apagará inmediatamente.",
+                "Apagar PC",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning
+            );
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            ShutdownButton.IsEnabled = false;
+
+            bool success =
+                await _api.ShutdownAgentAsync(
+                    _machineId
+                );
+
+            if (!success)
+            {
+                MessageBox.Show(
+                    $"No se pudo apagar {_machineId}.\n\n" +
+                    "Comprueba que el equipo esté conectado y autorizado.",
+                    "ControlLab",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
+
+                return;
+            }
+
+            MessageBox.Show(
+                $"Se ha enviado la orden de apagado a {_machineId}.",
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error apagando {_machineId}:\n\n" +
+                ex.Message,
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+        finally
+        {
+            ShutdownButton.IsEnabled =
+                _agent != null &&
+                _agent.Status.Equals(
+                    "online",
+                    StringComparison.OrdinalIgnoreCase
+                ) &&
+                _authorized;
         }
     }
     // ==========================================

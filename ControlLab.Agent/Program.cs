@@ -652,6 +652,118 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
+                    else if (command.Command == "RESTART_PC")
+                    {
+                        Console.WriteLine(
+                            "🔄 Comando RESTART_PC recibido"
+                        );
+
+                        try
+                        {
+                            using var process =
+                                new System.Diagnostics.Process();
+
+                            process.StartInfo.FileName =
+                                "shutdown.exe";
+
+                            process.StartInfo.Arguments =
+                                "/r /t 0";
+
+                            process.StartInfo.CreateNoWindow =
+                                true;
+
+                            process.StartInfo.UseShellExecute =
+                                false;
+
+                            process.Start();
+
+                            var response = new
+                            {
+                                type = "COMMAND_RESULT",
+                                machineId = command.MachineId,
+                                command = "RESTART_PC",
+                                success = true,
+                                message = "Reinicio solicitado correctamente.",
+                                timestamp = DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                "🔄 Reinicio solicitado"
+                            );
+                        }
+                        catch (Exception ex)
+                        {
+                            var response = new
+                            {
+                                type = "COMMAND_RESULT",
+                                machineId = command.MachineId,
+                                command = "RESTART_PC",
+                                success = false,
+                                message = ex.Message,
+                                timestamp = DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                $"❌ Error reiniciando PC: {ex.Message}"
+                            );
+                        }
+                    }
+                    else if (command.Command == "SHUTDOWN_PC")
+                    {
+                        Console.WriteLine("⏻ Comando SHUTDOWN_PC recibido");
+
+                        try
+                        {
+                            using var process = new System.Diagnostics.Process();
+
+                            process.StartInfo.FileName = "shutdown.exe";
+                            process.StartInfo.Arguments = "/s /t 0";
+                            process.StartInfo.CreateNoWindow = true;
+                            process.StartInfo.UseShellExecute = false;
+
+                            process.Start();
+
+                            var response = new
+                            {
+                                type = "COMMAND_RESULT",
+                                machineId = command.MachineId,
+                                command = "SHUTDOWN_PC",
+                                success = true,
+                                message = "Apagado solicitado correctamente.",
+                                timestamp = DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(socket, response);
+
+                            Console.WriteLine("⏻ Apagado solicitado");
+                        }
+                        catch (Exception ex)
+                        {
+                            var response = new
+                            {
+                                type = "COMMAND_RESULT",
+                                machineId = command.MachineId,
+                                command = "SHUTDOWN_PC",
+                                success = false,
+                                message = ex.Message,
+                                timestamp = DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(socket, response);
+
+                            Console.WriteLine($"❌ Error apagando PC: {ex.Message}");
+                        }
+                    }
                 }
             }
             catch (Exception ex)
