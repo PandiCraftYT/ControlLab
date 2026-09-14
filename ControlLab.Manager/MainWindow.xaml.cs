@@ -168,16 +168,15 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // ==========================================
-            // ERROR
-            // ==========================================
-
             Console.WriteLine(
                 $"❌ Error consultando servidor: {ex.Message}"
             );
         }
     }
 
+    // ==========================================
+    // CREAR TARJETA
+    // ==========================================
 
     private Border CreateAgentCard(
         AgentInfo agent)
@@ -194,6 +193,11 @@ public partial class MainWindow : Window
             }
         );
     }
+
+    // ==========================================
+    // DETALLES DEL EQUIPO
+    // ==========================================
+
     private void ShowAgentDetails(
         string machineId,
         AgentInfo agent)
@@ -210,6 +214,10 @@ public partial class MainWindow : Window
 
         window.ShowDialog();
     }
+
+    // ==========================================
+    // CERRAR
+    // ==========================================
 
     protected override void OnClosed(
         EventArgs e)

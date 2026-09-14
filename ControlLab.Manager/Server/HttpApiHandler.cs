@@ -2,23 +2,26 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-
+using ControlLab.Manager.Data;
 namespace ControlLab.Manager.Server;
 
 public sealed class HttpApiHandler
 {
     private readonly Func<IEnumerable<AgentConnection>> _getAgents;
+    private readonly ControlLabDatabase _database;
     private readonly Func<string, ScreenCaptureData?> _getScreen;
     private readonly Func<HttpListenerContext, string, string, Task> _sendCommand;
 
     public HttpApiHandler(
         Func<IEnumerable<AgentConnection>> getAgents,
         Func<string, ScreenCaptureData?> getScreen,
-        Func<HttpListenerContext, string, string, Task> sendCommand)
+        Func<HttpListenerContext, string, string, Task> sendCommand,
+        ControlLabDatabase database)
     {
         _getAgents = getAgents;
         _getScreen = getScreen;
         _sendCommand = sendCommand;
+        _database = database;
     }
 
     public async Task HandleAsync(HttpListenerContext context)
@@ -67,7 +70,67 @@ public sealed class HttpApiHandler
 
             string action =
                 parts[3].ToLowerInvariant();
+            // ==========================================
+            // AUTORIZAR / REVOCAR EQUIPO
+            // ==========================================
 
+            if (method == "POST" && action == "authorize")
+            {
+                bool success =
+                    _database.AuthorizeAgent(machineId);
+
+                if (!success)
+                {
+                    await SendErrorAsync(
+                        context,
+                        404,
+                        "Equipo no encontrado."
+                    );
+
+                    return;
+                }
+
+                await SendJsonAsync(
+                    context,
+                    new
+                    {
+                        success = true,
+                        machineId,
+                        authorized = true
+                    }
+                );
+
+                return;
+            }
+
+            if (method == "POST" && action == "revoke")
+            {
+                bool success =
+                    _database.RevokeAgent(machineId);
+
+                if (!success)
+                {
+                    await SendErrorAsync(
+                        context,
+                        404,
+                        "Equipo no encontrado."
+                    );
+
+                    return;
+                }
+
+                await SendJsonAsync(
+                    context,
+                    new
+                    {
+                        success = true,
+                        machineId,
+                        authorized = false
+                    }
+                );
+
+                return;
+            }
             if (method == "POST" &&
                 (action == "ping" || action == "screen"))
             {
@@ -121,25 +184,99 @@ public sealed class HttpApiHandler
     private async Task SendAgentsAsync(
         HttpListenerContext context)
     {
-        var agents = _getAgents()
-            .Select(agent => new
-            {
-                machineId = agent.MachineId,
-                hostname = agent.Hostname,
-                platform = agent.Platform,
-                agentVersion = agent.AgentVersion,
-                connectedAt = agent.ConnectedAt,
-                lastHeartbeat = agent.LastHeartbeat,
-                status =
-                    agent.Socket.State == WebSocketState.Open
-                        ? "online"
-                        : "offline"
-            })
-            .OrderBy(
-                agent => agent.machineId,
-                StringComparer.OrdinalIgnoreCase
-            )
-            .ToList();
+        // Equipos guardados permanentemente en SQLite
+        var registeredAgents =
+            _database.GetAgents();
+
+        // Equipos conectados actualmente
+        var connectedAgents =
+            _getAgents()
+                .ToDictionary(
+                    agent => agent.MachineId,
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+        var agents =
+            registeredAgents
+                .Select(registered =>
+                {
+                    // ==========================================
+                    // EQUIPO CONECTADO
+                    // ==========================================
+
+                    if (
+                        connectedAgents.TryGetValue(
+                            registered.MachineId,
+                            out var onlineAgent
+                        )
+                    )
+                    {
+                        return new
+                        {
+                            machineId =
+                                onlineAgent.MachineId,
+
+                            displayName =
+                                registered.DisplayName,
+
+                            hostname =
+                                onlineAgent.Hostname,
+
+                            platform =
+                                onlineAgent.Platform,
+
+                            agentVersion =
+                                onlineAgent.AgentVersion,
+
+                            connectedAt =
+                                onlineAgent.ConnectedAt,
+
+                            lastHeartbeat =
+                                onlineAgent.LastHeartbeat,
+
+                            status = "online",
+                            authorized =
+                                registered.Authorized
+                        };
+                    }
+
+                    // ==========================================
+                    // EQUIPO DESCONECTADO
+                    // ==========================================
+
+                    return new
+                    {
+                        machineId =
+                            registered.MachineId,
+
+                        displayName =
+                            registered.DisplayName,
+
+                        hostname =
+                            registered.Hostname,
+
+                        platform =
+                            registered.Platform,
+
+                        agentVersion =
+                            registered.AgentVersion,
+
+                        connectedAt =
+                            registered.FirstSeen,
+
+                        lastHeartbeat =
+                            registered.LastSeen,
+
+                        status = "offline",
+                        authorized =
+                            registered.Authorized
+                    };
+                })
+                .OrderBy(
+                    agent => agent.displayName,
+                    StringComparer.OrdinalIgnoreCase
+                )
+                .ToList();
 
         await SendJsonAsync(
             context,

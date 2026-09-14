@@ -11,19 +11,43 @@ public sealed class WebSocketHandler
     private const int BufferSize = 8192;
     private const int MaxMessageSize = 8 * 1024 * 1024;
 
+    // =========================================================
+    // AUTENTICACIÓN
+    // =========================================================
+
+    private readonly string _expectedAuthToken;
+
+    private readonly Func<string, bool> _isAgentAuthorized;
+
     private readonly AgentRegistry _agents;
+
     private readonly Action<string, ScreenCaptureData> _saveScreen;
+
     private readonly Action<AgentConnection> _saveAgent;
-    
+
     public WebSocketHandler(
         AgentRegistry agents,
         Action<string, ScreenCaptureData> saveScreen,
-        Action<AgentConnection> saveAgent)
+        Action<AgentConnection> saveAgent,
+        string expectedAuthToken,
+        Func<string, bool> isAgentAuthorized)
     {
         _agents = agents;
+
         _saveScreen = saveScreen;
+
         _saveAgent = saveAgent;
+
+        _expectedAuthToken =
+            expectedAuthToken;
+
+        _isAgentAuthorized =
+            isAgentAuthorized;
     }
+
+    // =========================================================
+    // CONEXIÓN WEBSOCKET
+    // =========================================================
 
     public async Task HandleAsync(
         HttpListenerContext context)
@@ -43,20 +67,29 @@ public sealed class WebSocketHandler
 
             context.Response.StatusCode = 500;
             context.Response.Close();
+
             return;
         }
 
-        WebSocket socket = wsContext.WebSocket;
+        WebSocket socket =
+            wsContext.WebSocket;
+
         AgentConnection? registeredAgent = null;
 
-        Console.WriteLine("🔌 Nueva conexión WebSocket");
+        Console.WriteLine(
+            "🔌 Nueva conexión WebSocket"
+        );
 
         try
         {
-            while (socket.State == WebSocketState.Open)
+            while (
+                socket.State ==
+                WebSocketState.Open)
             {
                 string? message =
-                    await ReceiveMessageAsync(socket);
+                    await ReceiveMessageAsync(
+                        socket
+                    );
 
                 if (message == null)
                     break;
@@ -68,6 +101,12 @@ public sealed class WebSocketHandler
                         registeredAgent
                     );
             }
+        }
+        catch (WebSocketException ex)
+        {
+            Console.WriteLine(
+                $"⚠️ WebSocket cerrado: {ex.Message}"
+            );
         }
         catch (Exception ex)
         {
@@ -87,6 +126,23 @@ public sealed class WebSocketHandler
                 Console.WriteLine(
                     "   El equipo permanecerá registrado como OFFLINE."
                 );
+
+                if (
+                    _agents.TryGetValue(
+                        registeredAgent.MachineId,
+                        out var currentAgent
+                    ) &&
+                    ReferenceEquals(
+                        currentAgent,
+                        registeredAgent
+                    )
+                )
+                {
+                    _agents.TryRemove(
+                        registeredAgent.MachineId,
+                        out _
+                    );
+                }
             }
 
             try
@@ -98,6 +154,10 @@ public sealed class WebSocketHandler
             }
         }
     }
+
+    // =========================================================
+    // PROCESAR MENSAJES
+    // =========================================================
 
     private async Task<AgentConnection?> ProcessMessageAsync(
         WebSocket socket,
@@ -113,35 +173,68 @@ public sealed class WebSocketHandler
                 document.RootElement;
 
             string type =
-                GetString(root, "type");
+                GetString(
+                    root,
+                    "type"
+                );
 
             switch (type)
             {
                 case "AGENT_REGISTER":
+
                     return await RegisterAsync(
                         socket,
                         root
                     );
 
                 case "HEARTBEAT":
+
+                    if (registeredAgent == null)
+                    {
+                        await RejectAgentAsync(
+                            socket,
+                            "Agente no registrado"
+                        );
+
+                        return null;
+                    }
+
                     await HeartbeatAsync(
                         socket,
                         root
                     );
+
                     return registeredAgent;
 
                 case "COMMAND_RESULT":
-                    LogCommandResult(root);
+
+                    if (registeredAgent == null)
+                        return null;
+
+                    LogCommandResult(
+                        root
+                    );
+
                     return registeredAgent;
 
                 case "SCREEN_CAPTURE_RESULT":
+
+                    if (registeredAgent == null)
+                        return null;
+
                     SaveScreen(
                         socket,
                         root
                     );
+
                     return registeredAgent;
 
                 default:
+
+                    Console.WriteLine(
+                        $"⚠️ Mensaje desconocido: {type}"
+                    );
+
                     return registeredAgent;
             }
         }
@@ -163,24 +256,173 @@ public sealed class WebSocketHandler
         }
     }
 
+    // =========================================================
+    // REGISTRO DEL AGENTE
+    // =========================================================
+
     private async Task<AgentConnection?> RegisterAsync(
         WebSocket socket,
         JsonElement root)
     {
         string machineId =
-            GetString(root, "machineId");
+            GetString(
+                root,
+                "machineId"
+            );
 
         if (string.IsNullOrWhiteSpace(machineId))
-            return null;
+        {
+            Console.WriteLine(
+                "⚠️ Intento de registro sin MachineId."
+            );
 
-        if (_agents.TryGetValue(
+            await RejectAgentAsync(
+                socket,
+                "MachineId requerido"
+            );
+
+            return null;
+        }
+
+        // =====================================================
+        // VALIDAR TOKEN
+        // =====================================================
+
+        string authToken =
+            GetString(
+                root,
+                "authToken"
+            );
+
+        if (!string.Equals(
+                authToken,
+                _expectedAuthToken,
+                StringComparison.Ordinal))
+        {
+            Console.WriteLine(
+                $"🔐 Agent rechazado por token inválido: " +
+                $"{machineId}"
+            );
+
+            await RejectAgentAsync(
+                socket,
+                "Token de autenticación inválido"
+            );
+
+            return null;
+        }
+
+        // =====================================================
+        // CREAR INFORMACIÓN DEL AGENT
+        // =====================================================
+
+        string now =
+            DateTime.UtcNow.ToString("O");
+
+        var agent =
+            new AgentConnection
+            {
+                MachineId =
+                    machineId,
+
+                Hostname =
+                    GetString(
+                        root,
+                        "hostname"
+                    ),
+
+                Platform =
+                    GetString(
+                        root,
+                        "platform"
+                    ),
+
+                AgentVersion =
+                    GetString(
+                        root,
+                        "agentVersion"
+                    ),
+
+                ConnectedAt =
+                    now,
+
+                LastHeartbeat =
+                    now,
+
+                Socket =
+                    socket
+            };
+
+        // =====================================================
+        // GUARDAR / ACTUALIZAR EN SQLITE
+        //
+        // IMPORTANTE:
+        // Si es un equipo nuevo, RegisterAgent() lo crea
+        // con Authorized = 0.
+        //
+        // Si ya existe y está autorizado, conserva el 1.
+        // =====================================================
+
+        _saveAgent(
+            agent
+        );
+
+        // =====================================================
+        // COMPROBAR AUTORIZACIÓN
+        // =====================================================
+
+        bool authorized =
+            _isAgentAuthorized(
+                machineId
+            );
+
+        if (!authorized)
+        {
+            Console.WriteLine(
+                $"🔒 Agent pendiente de autorización: " +
+                $"{machineId} ({agent.Hostname})"
+            );
+
+            await SendJsonAsync(
+                socket,
+                new
+                {
+                    type =
+                        "REGISTRATION_PENDING",
+
+                    machineId =
+                        machineId,
+
+                    message =
+                        "El equipo está pendiente de autorización por el administrador."
+                }
+            );
+
+            await RejectAgentAsync(
+                socket,
+                "Agente pendiente de autorización"
+            );
+
+            return null;
+        }
+
+        // =====================================================
+        // CERRAR CONEXIÓN ANTERIOR DEL MISMO EQUIPO
+        // =====================================================
+
+        if (
+            _agents.TryGetValue(
                 machineId,
-                out var previous))
+                out var previous
+            )
+        )
         {
             try
             {
-                if (previous.Socket.State ==
-                    WebSocketState.Open)
+                if (
+                    previous.Socket.State ==
+                    WebSocketState.Open
+                )
                 {
                     await previous.Socket.CloseAsync(
                         WebSocketCloseStatus.NormalClosure,
@@ -194,57 +436,119 @@ public sealed class WebSocketHandler
             }
         }
 
-        string now =
-            DateTime.UtcNow.ToString("O");
+        // =====================================================
+        // REGISTRAR EN MEMORIA
+        // =====================================================
 
-        var agent =
-            new AgentConnection
-            {
-                MachineId = machineId,
-                Hostname =
-                    GetString(root, "hostname"),
-                Platform =
-                    GetString(root, "platform"),
-                AgentVersion =
-                    GetString(root, "agentVersion"),
-                ConnectedAt = now,
-                LastHeartbeat = now,
-                Socket = socket
-            };
-
-        _agents.Register(agent);
-        _saveAgent(agent);
-        Console.WriteLine(
-            $"🖥️ Agente registrado: {machineId} " +
-            $"({agent.Hostname})"
+        _agents.Register(
+            agent
         );
+
+        Console.WriteLine(
+            $"🟢 Agente autenticado y autorizado: " +
+            $"{machineId} ({agent.Hostname})"
+        );
+
+        // =====================================================
+        // CONFIRMACIÓN AL AGENTE
+        // =====================================================
 
         await SendJsonAsync(
             socket,
             new
             {
-                type = "REGISTER_ACCEPTED",
-                machineId,
+                type =
+                    "REGISTER_ACCEPTED",
+
+                machineId =
+                    machineId,
+
                 message =
-                    "Agente registrado correctamente"
+                    "Agente autenticado, autorizado y registrado correctamente"
             }
         );
 
         return agent;
     }
 
+    // =========================================================
+    // RECHAZAR AGENTE
+    // =========================================================
+
+    private static async Task RejectAgentAsync(
+        WebSocket socket,
+        string reason)
+    {
+        try
+        {
+            if (
+                socket.State ==
+                WebSocketState.Open
+            )
+            {
+                await socket.CloseAsync(
+                    WebSocketCloseStatus.PolicyViolation,
+                    reason,
+                    CancellationToken.None
+                );
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    // =========================================================
+    // HEARTBEAT
+    // =========================================================
+
     private async Task HeartbeatAsync(
         WebSocket socket,
         JsonElement root)
     {
         string machineId =
-            GetString(root, "machineId");
+            GetString(
+                root,
+                "machineId"
+            );
 
-        if (!_agents.TryGetValue(
+        if (
+            !_agents.TryGetValue(
                 machineId,
-                out var agent) ||
-            agent.Socket != socket)
+                out var agent
+            )
+        )
         {
+            return;
+        }
+
+        if (agent.Socket != socket)
+        {
+            Console.WriteLine(
+                $"⚠️ Heartbeat rechazado: " +
+                $"socket no autorizado para {machineId}"
+            );
+
+            return;
+        }
+
+        // Volver a comprobar autorización.
+        if (
+            !_isAgentAuthorized(
+                machineId
+            )
+        )
+        {
+            Console.WriteLine(
+                $"🔒 Autorización revocada: " +
+                $"{machineId}"
+            );
+
+            await RejectAgentAsync(
+                socket,
+                "Autorización revocada"
+            );
+
             return;
         }
 
@@ -255,12 +559,18 @@ public sealed class WebSocketHandler
             socket,
             new
             {
-                type = "HEARTBEAT_ACK",
+                type =
+                    "HEARTBEAT_ACK",
+
                 timestamp =
                     agent.LastHeartbeat
             }
         );
     }
+
+    // =========================================================
+    // RESULTADO DE COMANDO
+    // =========================================================
 
     private static void LogCommandResult(
         JsonElement root)
@@ -273,44 +583,109 @@ public sealed class WebSocketHandler
         );
     }
 
+    // =========================================================
+    // GUARDAR CAPTURA
+    // =========================================================
+
     private void SaveScreen(
         WebSocket socket,
         JsonElement root)
     {
         string machineId =
-            GetString(root, "machineId");
+            GetString(
+                root,
+                "machineId"
+            );
 
         string image =
-            GetString(root, "image");
+            GetString(
+                root,
+                "image"
+            );
 
-        if (string.IsNullOrWhiteSpace(machineId) ||
-            string.IsNullOrWhiteSpace(image))
+        if (
+            string.IsNullOrWhiteSpace(
+                machineId
+            ) ||
+            string.IsNullOrWhiteSpace(
+                image
+            )
+        )
         {
             return;
         }
 
-        if (!_agents.TryGetValue(
+        // =====================================================
+        // COMPROBAR SOCKET
+        // =====================================================
+
+        if (
+            !_agents.TryGetValue(
                 machineId,
-                out var agent) ||
-            agent.Socket != socket)
+                out var agent
+            ) ||
+            agent.Socket != socket
+        )
         {
+            Console.WriteLine(
+                $"⚠️ Captura rechazada: conexión no autorizada " +
+                $"para {machineId}"
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // COMPROBAR AUTORIZACIÓN
+        // =====================================================
+
+        if (
+            !_isAgentAuthorized(
+                machineId
+            )
+        )
+        {
+            Console.WriteLine(
+                $"🔒 Captura rechazada: Agent no autorizado " +
+                $"{machineId}"
+            );
+
             return;
         }
 
         try
         {
             byte[] imageBytes =
-                Convert.FromBase64String(image);
+                Convert.FromBase64String(
+                    image
+                );
 
             if (imageBytes.Length == 0)
                 return;
+
+            if (
+                imageBytes.Length >
+                MaxMessageSize
+            )
+            {
+                Console.WriteLine(
+                    $"⚠️ Captura demasiado grande: " +
+                    $"{machineId}"
+                );
+
+                return;
+            }
 
             _saveScreen(
                 machineId,
                 new ScreenCaptureData
                 {
-                    MachineId = machineId,
-                    Image = image,
+                    MachineId =
+                        machineId,
+
+                    Image =
+                        image,
+
                     Timestamp =
                         GetString(
                             root,
@@ -320,17 +695,23 @@ public sealed class WebSocketHandler
             );
 
             Console.WriteLine(
-                $"📸 Captura recibida: {machineId} " +
+                $"📸 Captura recibida: " +
+                $"{machineId} " +
                 $"({imageBytes.Length / 1024} KB)"
             );
         }
         catch (FormatException)
         {
             Console.WriteLine(
-                $"⚠️ Captura Base64 inválida: {machineId}"
+                $"⚠️ Captura Base64 inválida: " +
+                $"{machineId}"
             );
         }
     }
+
+    // =========================================================
+    // RECIBIR MENSAJE
+    // =========================================================
 
     private static async Task<string?> ReceiveMessageAsync(
         WebSocket socket)
@@ -347,25 +728,35 @@ public sealed class WebSocketHandler
         {
             WebSocketReceiveResult result =
                 await socket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer),
+                    new ArraySegment<byte>(
+                        buffer
+                    ),
                     CancellationToken.None
                 );
 
-            if (result.MessageType ==
-                WebSocketMessageType.Close)
+            if (
+                result.MessageType ==
+                WebSocketMessageType.Close
+            )
             {
                 return null;
             }
 
-            if (result.MessageType !=
-                WebSocketMessageType.Text)
+            if (
+                result.MessageType !=
+                WebSocketMessageType.Text
+            )
             {
                 continue;
             }
 
-            totalBytes += result.Count;
+            totalBytes +=
+                result.Count;
 
-            if (totalBytes > MaxMessageSize)
+            if (
+                totalBytes >
+                MaxMessageSize
+            )
             {
                 Console.WriteLine(
                     "⚠️ Mensaje WebSocket demasiado grande."
@@ -393,7 +784,9 @@ public sealed class WebSocketHandler
                 )
             );
 
-            if (result.EndOfMessage)
+            if (
+                result.EndOfMessage
+            )
             {
                 return Encoding.UTF8.GetString(
                     memory.ToArray()
@@ -402,22 +795,34 @@ public sealed class WebSocketHandler
         }
     }
 
+    // =========================================================
+    // ENVIAR JSON
+    // =========================================================
+
     private static Task SendJsonAsync(
         WebSocket socket,
         object data)
     {
         byte[] bytes =
             Encoding.UTF8.GetBytes(
-                JsonSerializer.Serialize(data)
+                JsonSerializer.Serialize(
+                    data
+                )
             );
 
         return socket.SendAsync(
-            new ArraySegment<byte>(bytes),
+            new ArraySegment<byte>(
+                bytes
+            ),
             WebSocketMessageType.Text,
             true,
             CancellationToken.None
         );
     }
+
+    // =========================================================
+    // OBTENER STRING
+    // =========================================================
 
     private static string GetString(
         JsonElement root,
@@ -430,6 +835,10 @@ public sealed class WebSocketHandler
             ? value.GetString() ?? ""
             : "";
     }
+
+    // =========================================================
+    // OBTENER BOOL
+    // =========================================================
 
     private static bool GetBool(
         JsonElement root,

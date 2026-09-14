@@ -4,17 +4,12 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
-
 using ControlLab.Manager.Models;
 
 namespace ControlLab.Manager.Controls;
 
 public static class AgentCard
 {
-    // ==========================================
-    // CREAR TARJETA
-    // ==========================================
-
     public static Border Create(
         string machineId,
         AgentInfo? agent,
@@ -27,73 +22,66 @@ public static class AgentCard
                 StringComparison.OrdinalIgnoreCase
             );
 
+        bool authorized =
+            agent != null &&
+            agent.Authorized;
+
+        string displayName =
+            !string.IsNullOrWhiteSpace(agent?.DisplayName)
+                ? agent.DisplayName
+                : machineId;
+
         // ==========================================
-        // COLORES
+        // COLOR DE CONEXIÓN
         // ==========================================
 
         var statusColor =
             online
                 ? new SolidColorBrush(
-                    Color.FromRgb(
-                        50,
-                        213,
-                        131
-                    )
-                )
+                    Color.FromRgb(50, 213, 131))
                 : new SolidColorBrush(
-                    Color.FromRgb(
-                        249,
-                        112,
-                        102
-                    )
-                );
+                    Color.FromRgb(249, 112, 102));
+
+        // ==========================================
+        // COLOR DE AUTORIZACIÓN
+        // ==========================================
+
+        var authorizationColor =
+            authorized
+                ? new SolidColorBrush(
+                    Color.FromRgb(50, 213, 131))
+                : new SolidColorBrush(
+                    Color.FromRgb(255, 180, 70));
 
         var secondaryColor =
             new SolidColorBrush(
-                Color.FromRgb(
-                    139,
-                    147,
-                    161
-                )
-            );
+                Color.FromRgb(139, 147, 161));
 
         // ==========================================
         // TARJETA
         // ==========================================
 
-        var card =
-            new Border
-            {
-                Width = 225,
+        var card = new Border
+        {
+            Width = 225,
+            Height = 180,
 
-                Height = 155,
+            Background =
+                new SolidColorBrush(
+                    Color.FromRgb(23, 26, 33)),
 
-                Background =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            23,
-                            26,
-                            33
-                        )
-                    ),
+            CornerRadius =
+                new CornerRadius(12),
 
-                CornerRadius =
-                    new CornerRadius(12),
+            Margin =
+                new Thickness(0, 0, 15, 15),
 
-                Margin =
-                    new Thickness(
-                        0,
-                        0,
-                        15,
-                        15
-                    ),
+            Padding =
+                new Thickness(16),
 
-                Padding =
-                    new Thickness(16),
-
-                Cursor =
-                    Cursors.Hand
-            };
+            Cursor =
+                Cursors.Hand
+        };
 
         var content =
             new StackPanel();
@@ -108,10 +96,8 @@ public static class AgentCard
         header.ColumnDefinitions.Add(
             new ColumnDefinition
             {
-                Width =
-                    GridLength.Auto
-            }
-        );
+                Width = GridLength.Auto
+            });
 
         header.ColumnDefinitions.Add(
             new ColumnDefinition
@@ -119,28 +105,23 @@ public static class AgentCard
                 Width =
                     new GridLength(
                         1,
-                        GridUnitType.Star
-                    )
-            }
-        );
+                        GridUnitType.Star)
+            });
 
         header.ColumnDefinitions.Add(
             new ColumnDefinition
             {
-                Width =
-                    GridLength.Auto
-            }
-        );
+                Width = GridLength.Auto
+            });
 
         // ==========================================
-        // INDICADOR DE ESTADO
+        // INDICADOR ONLINE / OFFLINE
         // ==========================================
 
         var indicator =
             new Ellipse
             {
                 Width = 10,
-
                 Height = 10,
 
                 Fill =
@@ -151,49 +132,48 @@ public static class AgentCard
                         0,
                         5,
                         8,
-                        0
-                    )
+                        0)
             };
 
         Grid.SetColumn(
             indicator,
-            0
-        );
+            0);
 
         header.Children.Add(
-            indicator
-        );
+            indicator);
 
         // ==========================================
-        // MACHINE ID
+        // NOMBRE
         // ==========================================
 
         var machineName =
             new TextBlock
             {
                 Text =
-                    machineId,
+                    displayName,
 
-                FontSize = 17,
+                FontSize =
+                    17,
 
                 FontWeight =
                     FontWeights.SemiBold,
 
                 Foreground =
-                    Brushes.White
+                    Brushes.White,
+
+                TextTrimming =
+                    TextTrimming.CharacterEllipsis
             };
 
         Grid.SetColumn(
             machineName,
-            1
-        );
+            1);
 
         header.Children.Add(
-            machineName
-        );
+            machineName);
 
         // ==========================================
-        // ESTADO
+        // ESTADO CONEXIÓN
         // ==========================================
 
         var status =
@@ -207,7 +187,8 @@ public static class AgentCard
                 Foreground =
                     statusColor,
 
-                FontSize = 10,
+                FontSize =
+                    10,
 
                 FontWeight =
                     FontWeights.Bold,
@@ -218,16 +199,45 @@ public static class AgentCard
 
         Grid.SetColumn(
             status,
-            2
-        );
+            2);
 
         header.Children.Add(
-            status
-        );
+            status);
 
         content.Children.Add(
-            header
-        );
+            header);
+
+        // ==========================================
+        // ESTADO DE AUTORIZACIÓN
+        // ==========================================
+
+        var authorization =
+            new TextBlock
+            {
+                Text =
+                    authorized
+                        ? "✓ AUTORIZADO"
+                        : "⚠ PENDIENTE",
+
+                Foreground =
+                    authorizationColor,
+
+                FontSize =
+                    11,
+
+                FontWeight =
+                    FontWeights.Bold,
+
+                Margin =
+                    new Thickness(
+                        18,
+                        7,
+                        0,
+                        0)
+            };
+
+        content.Children.Add(
+            authorization);
 
         // ==========================================
         // HOSTNAME
@@ -246,7 +256,8 @@ public static class AgentCard
                         ? Brushes.White
                         : secondaryColor,
 
-                FontSize = 12,
+                FontSize =
+                    12,
 
                 TextTrimming =
                     TextTrimming.CharacterEllipsis,
@@ -254,15 +265,13 @@ public static class AgentCard
                 Margin =
                     new Thickness(
                         0,
-                        14,
+                        10,
                         0,
-                        5
-                    )
+                        5)
             };
 
         content.Children.Add(
-            hostname
-        );
+            hostname);
 
         // ==========================================
         // HEARTBEAT
@@ -279,18 +288,18 @@ public static class AgentCard
                 Foreground =
                     secondaryColor,
 
-                FontSize = 10,
+                FontSize =
+                    10,
 
                 TextTrimming =
                     TextTrimming.CharacterEllipsis
             };
 
         content.Children.Add(
-            heartbeat
-        );
+            heartbeat);
 
         // ==========================================
-        // VERSIÓN DEL AGENTE
+        // VERSIÓN
         // ==========================================
 
         var version =
@@ -304,23 +313,22 @@ public static class AgentCard
                 Foreground =
                     secondaryColor,
 
-                FontSize = 10,
+                FontSize =
+                    10,
 
                 Margin =
                     new Thickness(
                         0,
                         5,
                         0,
-                        0
-                    )
+                        0)
             };
 
         content.Children.Add(
-            version
-        );
+            version);
 
         // ==========================================
-        // CONTENIDO
+        // ASIGNAR CONTENIDO
         // ==========================================
 
         card.Child =

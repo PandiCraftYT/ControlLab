@@ -3,9 +3,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
-
+using System.Text.Json;
 using ControlLab.Manager.Server;
-
+using System.IO;
 namespace ControlLab.Manager;
 
 public sealed class ControlLabServer
@@ -22,24 +22,38 @@ public sealed class ControlLabServer
     private readonly HttpApiHandler _http;
 
     private CancellationTokenSource? _cancellation;
+    private readonly string _authToken;
 
     public ControlLabServer()
     {
+        _authToken =
+            LoadAuthToken();
+
         _webSocket = new WebSocketHandler(
-            _agents,
-            (machineId, screen) =>
-                _screens[machineId] = screen,
-            agent =>
-                _database.RegisterAgent(
-                    agent.MachineId,
-                    agent.Hostname,
-                    agent.Platform,
-                    agent.AgentVersion
-                )
-        );
+        _agents,
+
+        (machineId, screen) =>
+            _screens[machineId] = screen,
+
+        agent =>
+            _database.RegisterAgent(
+                agent.MachineId,
+                agent.Hostname,
+                agent.Platform,
+                agent.AgentVersion
+            ),
+
+        _authToken,
+
+        machineId =>
+            _database.IsAgentAuthorized(
+                machineId
+            )
+    );
 
         _http = new HttpApiHandler(
             () => _agents.Values,
+
             machineId =>
                 _screens.TryGetValue(
                     machineId,
@@ -47,7 +61,10 @@ public sealed class ControlLabServer
                 )
                     ? screen
                     : null,
-            SendCommandAsync
+
+            SendCommandAsync,
+
+            _database
         );
     }
 
@@ -431,7 +448,61 @@ public sealed class ControlLabServer
 
         return null;
     }
+private static string LoadAuthToken()
+{
+    string configPath =
+        Path.Combine(
+            AppContext.BaseDirectory,
+            "config.json"
+        );
 
+    if (!File.Exists(configPath))
+    {
+        throw new FileNotFoundException(
+            "No se encontró config.json del Manager.",
+            configPath
+        );
+    }
+
+    try
+    {
+        string json =
+            File.ReadAllText(
+                configPath
+            );
+
+        using JsonDocument document =
+            JsonDocument.Parse(json);
+
+        if (!document.RootElement.TryGetProperty(
+                "AuthToken",
+                out JsonElement tokenElement))
+        {
+            throw new InvalidOperationException(
+                "AuthToken no está configurado en config.json."
+            );
+        }
+
+        string token =
+            tokenElement.GetString() ?? "";
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new InvalidOperationException(
+                "AuthToken está vacío en config.json."
+            );
+        }
+
+        return token.Trim();
+    }
+    catch (JsonException ex)
+    {
+        throw new InvalidOperationException(
+            "El config.json del Manager no contiene JSON válido.",
+            ex
+        );
+    }
+}
     public void Stop()
     {
         try

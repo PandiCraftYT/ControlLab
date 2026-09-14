@@ -72,7 +72,31 @@ public class ControlLabApi
             cancellationToken
         );
     }
+    public async Task<bool> AuthorizeAgentAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.PostAsync(
+            $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/authorize",
+            null,
+            cancellationToken
+        );
 
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> RevokeAgentAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.PostAsync(
+            $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/revoke",
+            null,
+            cancellationToken
+        );
+
+        return response.IsSuccessStatusCode;
+    }
     // ==========================================
     // CERRAR
     // ==========================================

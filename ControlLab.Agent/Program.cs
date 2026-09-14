@@ -11,52 +11,56 @@ string configPath = Path.Combine(
 );
 
 // ==========================================
-// LEER CONFIGURACIÓN
+// LEER / CREAR IDENTIFICADOR DEL EQUIPO
 // ==========================================
 
-if (!File.Exists(configPath))
-{
-    Console.WriteLine("❌ No se encontró config.json");
-    Console.WriteLine($"Ubicación esperada: {configPath}");
-    return;
-}
-
-AgentConfig? config;
+string machineId;
+string authToken;
 
 try
 {
-    string configJson = await File.ReadAllTextAsync(configPath);
-
-    config = JsonSerializer.Deserialize<AgentConfig>(
-        configJson,
-        new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        }
-    );
+    machineId =
+        await GetOrCreateMachineIdAsync(
+            configPath
+        );
 }
 catch (Exception ex)
 {
     Console.WriteLine(
-        $"❌ Error leyendo config.json: {ex.Message}"
+        $"❌ Error obteniendo MachineId: {ex.Message}"
     );
 
     return;
 }
 
-if (
-    config == null ||
-    string.IsNullOrWhiteSpace(config.MachineId)
-)
+// ==========================================
+// OBTENER AUTH TOKEN
+// ==========================================
+
+try
+{
+    authToken =
+        await GetAuthTokenAsync(
+            configPath
+        );
+}
+catch (Exception ex)
 {
     Console.WriteLine(
-        "❌ MachineId no está configurado."
+        $"❌ Error obteniendo AuthToken: {ex.Message}"
     );
 
     return;
 }
 
-string machineId = config.MachineId;
+if (string.IsNullOrWhiteSpace(machineId))
+{
+    Console.WriteLine(
+        "❌ No se pudo obtener un MachineId válido."
+    );
+
+    return;
+}
 
 // ==========================================
 // INFORMACIÓN DEL AGENTE
@@ -139,7 +143,8 @@ while (true)
             machineId = machineId,
             hostname = Environment.MachineName,
             platform = Environment.OSVersion.Platform.ToString(),
-            agentVersion = AGENT_VERSION
+            agentVersion = AGENT_VERSION,
+            authToken = authToken
         };
 
         await SendMessageAsync(
@@ -211,6 +216,134 @@ while (true)
     await Task.Delay(5000);
 }
 
+// ==========================================
+// OBTENER / CREAR MACHINE ID
+// ==========================================
+
+static async Task<string> GetOrCreateMachineIdAsync(
+    string configPath)
+{
+    AgentConfig? config = null;
+
+    // ==========================================
+    // LEER CONFIGURACIÓN EXISTENTE
+    // ==========================================
+
+    if (File.Exists(configPath))
+    {
+        try
+        {
+            string configJson =
+                await File.ReadAllTextAsync(
+                    configPath
+                );
+
+            config =
+                JsonSerializer.Deserialize<AgentConfig>(
+                    configJson,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }
+                );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"⚠️ Error leyendo config.json: {ex.Message}"
+            );
+        }
+    }
+
+    // ==========================================
+    // SI YA EXISTE UN ID, CONSERVARLO
+    // ==========================================
+
+    if (
+        config != null &&
+        !string.IsNullOrWhiteSpace(
+            config.MachineId
+        )
+    )
+    {
+        return config.MachineId.Trim();
+    }
+
+    // ==========================================
+    // GENERAR NUEVO ID
+    // ==========================================
+
+    string newMachineId =
+        $"PC-{Guid.NewGuid():N}".ToUpperInvariant();
+
+    var newConfig = new AgentConfig
+    {
+        MachineId = newMachineId
+    };
+
+    string json =
+        JsonSerializer.Serialize(
+            newConfig,
+            new JsonSerializerOptions
+            {
+                WriteIndented = true
+            }
+        );
+
+    await File.WriteAllTextAsync(
+        configPath,
+        json
+    );
+
+    Console.WriteLine(
+        $"🆔 Nuevo MachineId generado: {newMachineId}"
+    );
+
+    Console.WriteLine(
+        $"💾 MachineId guardado en: {configPath}"
+    );
+
+    return newMachineId;
+}
+// ==========================================
+// OBTENER AUTH TOKEN
+// ==========================================
+
+static async Task<string> GetAuthTokenAsync(
+    string configPath)
+{
+    if (!File.Exists(configPath))
+    {
+        return "";
+    }
+
+    try
+    {
+        string json =
+            await File.ReadAllTextAsync(
+                configPath
+            );
+
+        var config =
+            JsonSerializer.Deserialize<AgentConfig>(
+                json,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                }
+            );
+
+        return config?.AuthToken ?? "";
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(
+            $"⚠️ Error leyendo AuthToken: {ex.Message}"
+        );
+
+        return "";
+    }
+}
 // ==========================================
 // ENVIAR MENSAJE
 // ==========================================
@@ -352,7 +485,8 @@ static async Task ReceiveMessagesAsync(
                         var response = new
                         {
                             type = "COMMAND_RESULT",
-                            machineId = command.MachineId,
+                            machineId =
+                                command.MachineId,
                             command = "PING",
                             success = true,
                             message = "PONG",
@@ -523,6 +657,8 @@ static string GetMachineId()
 public class AgentConfig
 {
     public string MachineId { get; set; } = "";
+
+    public string AuthToken { get; set; } = "";
 }
 
 // ==========================================
