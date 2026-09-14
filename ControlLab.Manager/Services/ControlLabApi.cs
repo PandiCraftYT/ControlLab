@@ -132,6 +132,23 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
     // ==========================================
+    // BLOQUEAR SESIÓN
+    // ==========================================
+
+    public async Task<bool> LockSessionAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/lock",
+                null,
+                cancellationToken
+            );
+
+        return response.IsSuccessStatusCode;
+    }
+    // ==========================================
     // CERRAR
     // ==========================================
 

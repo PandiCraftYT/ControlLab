@@ -172,7 +172,15 @@
                 Margin="0,0,0,10"
                 Click="AuthorizationButton_Click"/>
 
+            <!-- BLOQUEAR SESIÓN -->
 
+            <Button
+                x:Name="LockSessionButton"
+                Content="🔒 Bloquear sesión"
+                Height="45"
+                FontSize="14"
+                Margin="0,0,0,10"
+                Click="LockSessionButton_Click"/>
             <!-- VER PANTALLA -->
 
             <Button

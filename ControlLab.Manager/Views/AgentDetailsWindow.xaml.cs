@@ -132,6 +132,10 @@ public partial class AgentDetailsWindow : Window
         ScreenButton.IsEnabled =
             online &&
             _authorized;
+        
+        LockSessionButton.IsEnabled =
+        online &&
+        _authorized;
     }
 
     // ==========================================
@@ -478,7 +482,80 @@ public partial class AgentDetailsWindow : Window
             UpdateAuthorizationUI();
         }
     }
+    // ==========================================
+    // BLOQUEAR SESIÓN
+    // ==========================================
 
+    private async void LockSessionButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var result =
+            MessageBox.Show(
+                $"¿Deseas bloquear la sesión de {_machineId}?\n\n" +
+                "La computadora mostrará la pantalla de bloqueo de Windows.",
+                "Bloquear sesión",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning
+            );
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            LockSessionButton.IsEnabled = false;
+            LockSessionButton.Content = "Bloqueando...";
+
+            bool success =
+                await _api.LockSessionAsync(
+                    _machineId
+                );
+
+            if (!success)
+            {
+                MessageBox.Show(
+                    $"No se pudo bloquear la sesión de {_machineId}.\n\n" +
+                    "Comprueba que el equipo esté conectado y autorizado.",
+                    "ControlLab",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
+
+                return;
+            }
+
+            MessageBox.Show(
+                $"La sesión de {_machineId} ha sido bloqueada correctamente.",
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error bloqueando la sesión de {_machineId}:\n\n" +
+                ex.Message,
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+        finally
+        {
+            LockSessionButton.IsEnabled =
+                _agent != null &&
+                _agent.Status.Equals(
+                    "online",
+                    StringComparison.OrdinalIgnoreCase
+                ) &&
+                _authorized;
+
+            LockSessionButton.Content =
+                "🔒 Bloquear sesión";
+        }
+    }
     // ==========================================
     // VER PANTALLA
     // ==========================================

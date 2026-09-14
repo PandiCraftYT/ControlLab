@@ -2,7 +2,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-
+using System.Runtime.InteropServices;
 const string AGENT_VERSION = "1.0.0";
 
 string configPath = Path.Combine(
@@ -593,6 +593,65 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
+                    else if (command.Command == "LOCK_SESSION")
+                    {
+                        Console.WriteLine(
+                            "🔒 Comando LOCK_SESSION recibido"
+                        );
+
+                        try
+                        {
+                            bool success =
+                            WindowsNativeMethods.LockWorkStation();
+
+                            var response = new
+                            {
+                                type = "COMMAND_RESULT",
+                                machineId = command.MachineId,
+                                command = "LOCK_SESSION",
+                                success,
+                                message =
+                                    success
+                                        ? "Sesión bloqueada correctamente."
+                                        : "Windows no pudo bloquear la sesión.",
+                                timestamp =
+                                    DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                success
+                                    ? "🔒 Sesión bloqueada"
+                                    : "❌ No se pudo bloquear la sesión"
+                            );
+                        }
+                        catch (Exception ex)
+                        {
+                            var response = new
+                            {
+                                type = "COMMAND_RESULT",
+                                machineId = command.MachineId,
+                                command = "LOCK_SESSION",
+                                success = false,
+                                message = ex.Message,
+                                timestamp =
+                                    DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                $"❌ Error bloqueando sesión: {ex.Message}"
+                            );
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -672,4 +731,17 @@ public class ServerCommand
     public string Command { get; set; } = "";
 
     public string MachineId { get; set; } = "";
+}
+// ==========================================
+// FUNCIONES NATIVAS DE WINDOWS
+// ==========================================
+
+public static class WindowsNativeMethods
+{
+    [DllImport(
+        "user32.dll",
+        SetLastError = true
+    )]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool LockWorkStation();
 }
