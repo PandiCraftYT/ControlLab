@@ -16,6 +16,7 @@ public sealed class ControlLabServer
     private readonly AgentRegistry _agents = new();
     private readonly ControlLab.Manager.Data.ControlLabDatabase _database = new();
     private readonly ConcurrentDictionary<string, ScreenCaptureData> _screens = new();
+    private readonly ConcurrentDictionary<string, ScreenCaptureData> _previews = new();
     private readonly HttpListener _listener = new();
 
     private readonly WebSocketHandler _webSocket;
@@ -29,11 +30,26 @@ public sealed class ControlLabServer
         _authToken =
             LoadAuthToken();
 
-        _webSocket = new WebSocketHandler(
+    _webSocket = new WebSocketHandler(
         _agents,
+
+        // ==========================================
+        // CAPTURA COMPLETA
+        // ==========================================
 
         (machineId, screen) =>
             _screens[machineId] = screen,
+
+        // ==========================================
+        // PREVIEW
+        // ==========================================
+
+        (machineId, preview) =>
+            _previews[machineId] = preview,
+
+        // ==========================================
+        // GUARDAR AGENTE
+        // ==========================================
 
         agent =>
             _database.RegisterAgent(
@@ -43,7 +59,15 @@ public sealed class ControlLabServer
                 agent.AgentVersion
             ),
 
+        // ==========================================
+        // TOKEN
+        // ==========================================
+
         _authToken,
+
+        // ==========================================
+        // AUTORIZACIÓN
+        // ==========================================
 
         machineId =>
             _database.IsAgentAuthorized(
@@ -52,20 +76,48 @@ public sealed class ControlLabServer
     );
 
         _http = new HttpApiHandler(
-            () => _agents.Values,
+        // ==========================================
+        // OBTENER AGENTES
+        // ==========================================
 
-            machineId =>
-                _screens.TryGetValue(
-                    machineId,
-                    out var screen
-                )
-                    ? screen
-                    : null,
+        () => _agents.Values,
 
-            SendCommandAsync,
+        // ==========================================
+        // OBTENER CAPTURA COMPLETA
+        // ==========================================
 
-            _database
-        );
+        machineId =>
+            _screens.TryGetValue(
+                machineId,
+                out var screen
+            )
+                ? screen
+                : null,
+
+        // ==========================================
+        // OBTENER PREVIEW
+        // ==========================================
+
+        machineId =>
+            _previews.TryGetValue(
+                machineId,
+                out var preview
+            )
+                ? preview
+                : null,
+
+        // ==========================================
+        // ENVIAR COMANDO
+        // ==========================================
+
+        SendCommandAsync,
+
+        // ==========================================
+        // BASE DE DATOS
+        // ==========================================
+
+        _database
+    );
     }
 
     public async Task StartAsync()
@@ -200,6 +252,14 @@ public sealed class ControlLabServer
         if (commandName == "SCREEN_CAPTURE")
         {
             _screens.TryRemove(
+                machineId,
+                out _
+            );
+        }
+
+        if (commandName == "PREVIEW_CAPTURE")
+        {
+            _previews.TryRemove(
                 machineId,
                 out _
             );

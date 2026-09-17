@@ -189,9 +189,16 @@ while (true)
                 machineId
             );
 
+        var screenPreviewTask =
+            SendScreenPreviewAsync(
+                socket,
+                machineId
+            );
+
         await Task.WhenAny(
             receiveTask,
-            heartbeatTask
+            heartbeatTask,
+            screenPreviewTask
         );
 
         Console.WriteLine(
@@ -352,18 +359,27 @@ static async Task SendMessageAsync(
     ClientWebSocket socket,
     object message)
 {
-    string json =
-        JsonSerializer.Serialize(message);
+    await SendLockHolder.Lock.WaitAsync();
 
-    byte[] bytes =
-        Encoding.UTF8.GetBytes(json);
+    try
+    {
+        string json =
+            JsonSerializer.Serialize(message);
 
-    await socket.SendAsync(
-        new ArraySegment<byte>(bytes),
-        WebSocketMessageType.Text,
-        true,
-        CancellationToken.None
-    );
+        byte[] bytes =
+            Encoding.UTF8.GetBytes(json);
+
+        await socket.SendAsync(
+            new ArraySegment<byte>(bytes),
+            WebSocketMessageType.Text,
+            true,
+            CancellationToken.None
+        );
+    }
+    finally
+    {
+        SendLockHolder.Lock.Release();
+    }
 }
 
 // ==========================================
@@ -593,6 +609,93 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
+                    else if (
+                        command.Command ==
+                        "PREVIEW_CAPTURE"
+                    )
+                    {
+                        Console.WriteLine(
+                            "🖼️ Comando PREVIEW_CAPTURE recibido"
+                        );
+
+                        try
+                        {
+                            string filePath =
+                                ScreenCapture.CapturePreview();
+
+                            byte[] imageBytes =
+                                await File.ReadAllBytesAsync(
+                                    filePath
+                                );
+
+                            string base64Image =
+                                Convert.ToBase64String(
+                                    imageBytes
+                                );
+
+                            var response = new
+                            {
+                                type =
+                                    "SCREEN_CAPTURE_RESULT",
+
+                                machineId =
+                                    command.MachineId,
+
+                                command =
+                                    "PREVIEW_CAPTURE",
+
+                                success = true,
+
+                                image =
+                                    base64Image,
+
+                                timestamp =
+                                    DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                $"🖼️ Preview enviado: " +
+                                $"{imageBytes.Length / 1024} KB"
+                            );
+                        }
+                        catch (Exception ex)
+                        {
+                            var response = new
+                            {
+                                type =
+                                    "SCREEN_CAPTURE_RESULT",
+
+                                machineId =
+                                    command.MachineId,
+
+                                command =
+                                    "PREVIEW_CAPTURE",
+
+                                success = false,
+
+                                message =
+                                    ex.Message,
+
+                                timestamp =
+                                    DateTime.UtcNow.ToString("O")
+                            };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                $"❌ Error generando preview: " +
+                                $"{ex.Message}"
+                            );
+                        }
+                    }
                     else if (command.Command == "LOCK_SESSION")
                     {
                         Console.WriteLine(
@@ -783,7 +886,84 @@ static async Task ReceiveMessagesAsync(
         }
     }
 }
+// ==========================================
+// PREVIEW AUTOMÁTICA DE PANTALLA
+// ==========================================
 
+static async Task SendScreenPreviewAsync(
+    ClientWebSocket socket,
+    string machineId)
+{
+    while (
+        socket.State ==
+        WebSocketState.Open
+    )
+    {
+        try
+        {
+            // Esperar antes de generar la siguiente captura
+            await Task.Delay(3000);
+
+            if (
+                socket.State !=
+                WebSocketState.Open
+            )
+            {
+                break;
+            }
+
+            Console.WriteLine(
+                "🖥️ Generando preview automática..."
+            );
+
+            string filePath =
+                ScreenCapture.CaptureScreen();
+
+            byte[] imageBytes =
+                await File.ReadAllBytesAsync(
+                    filePath
+                );
+
+            string base64Image =
+                Convert.ToBase64String(
+                    imageBytes
+                );
+
+            var response = new
+            {
+                type = "SCREEN_CAPTURE_RESULT",
+
+                machineId = machineId,
+
+                command = "SCREEN_PREVIEW",
+
+                success = true,
+
+                image = base64Image,
+
+                timestamp =
+                    DateTime.UtcNow.ToString("O")
+            };
+
+            await SendMessageAsync(
+                socket,
+                response
+            );
+
+            Console.WriteLine(
+                "📸 Preview automática enviada"
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"❌ Error en preview automática: {ex.Message}"
+            );
+
+            break;
+        }
+    }
+}
 // ==========================================
 // OBTENER MACHINE ID
 // ==========================================
@@ -843,6 +1023,16 @@ public class ServerCommand
     public string Command { get; set; } = "";
 
     public string MachineId { get; set; } = "";
+}
+
+// ==========================================
+// PROTECCIÓN DE ENVÍOS WEBSOCKET
+// ==========================================
+
+public static class SendLockHolder
+{
+    public static readonly SemaphoreSlim Lock =
+        new(1, 1);
 }
 // ==========================================
 // FUNCIONES NATIVAS DE WINDOWS

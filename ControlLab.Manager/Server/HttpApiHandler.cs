@@ -11,16 +11,19 @@ public sealed class HttpApiHandler
     private readonly Func<IEnumerable<AgentConnection>> _getAgents;
     private readonly ControlLabDatabase _database;
     private readonly Func<string, ScreenCaptureData?> _getScreen;
+    private readonly Func<string, ScreenCaptureData?> _getPreview;
     private readonly Func<HttpListenerContext, string, string, Task> _sendCommand;
 
     public HttpApiHandler(
         Func<IEnumerable<AgentConnection>> getAgents,
         Func<string, ScreenCaptureData?> getScreen,
+        Func<string, ScreenCaptureData?> getPreview,
         Func<HttpListenerContext, string, string, Task> sendCommand,
         ControlLabDatabase database)
     {
         _getAgents = getAgents;
         _getScreen = getScreen;
+        _getPreview = getPreview;
         _sendCommand = sendCommand;
         _database = database;
     }
@@ -434,6 +437,79 @@ public sealed class HttpApiHandler
             }
 
             // ==========================================
+            // SOLICITAR PREVIEW
+            // ==========================================
+
+            if (
+                method == "POST" &&
+                action == "preview"
+            )
+            {
+                var registeredAgent =
+                    _database.GetAgents()
+                        .FirstOrDefault(
+                            agent =>
+                                agent.MachineId.Equals(
+                                    machineId,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                        );
+
+                if (registeredAgent == null)
+                {
+                    await SendErrorAsync(
+                        context,
+                        404,
+                        "Equipo no encontrado."
+                    );
+
+                    return;
+                }
+
+                if (!registeredAgent.Authorized)
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+
+                    return;
+                }
+
+                bool online =
+                    _getAgents()
+                        .Any(
+                            agent =>
+                                agent.MachineId.Equals(
+                                    machineId,
+                                    StringComparison.OrdinalIgnoreCase
+                                ) &&
+                                agent.Socket.State ==
+                                    WebSocketState.Open
+                        );
+
+                if (!online)
+                {
+                    await SendErrorAsync(
+                        context,
+                        409,
+                        "El equipo no está conectado."
+                    );
+
+                    return;
+                }
+
+                await _sendCommand(
+                    context,
+                    machineId,
+                    "PREVIEW_CAPTURE"
+                );
+
+                return;
+            }
+
+            // ==========================================
             // OBTENER CAPTURA
             // ==========================================
 
@@ -443,6 +519,22 @@ public sealed class HttpApiHandler
             )
             {
                 await SendScreenAsync(
+                    context,
+                    machineId
+                );
+
+                return;
+            }
+            // ==========================================
+            // OBTENER PREVIEW
+            // ==========================================
+
+            if (
+                method == "GET" &&
+                action == "preview"
+            )
+            {
+                await SendPreviewAsync(
                     context,
                     machineId
                 );
@@ -789,7 +881,65 @@ public sealed class HttpApiHandler
 
         context.Response.Close();
     }
+    // ==========================================
+    // OBTENER PREVIEW
+    // ==========================================
 
+    private async Task SendPreviewAsync(
+        HttpListenerContext context,
+        string machineId)
+    {
+        ScreenCaptureData? preview =
+            _getPreview(machineId);
+
+        if (preview == null)
+        {
+            await SendErrorAsync(
+                context,
+                404,
+                $"No hay un preview disponible para {machineId}"
+            );
+
+            return;
+        }
+
+        byte[] imageBytes;
+
+        try
+        {
+            imageBytes =
+                Convert.FromBase64String(
+                    preview.Image
+                );
+        }
+        catch
+        {
+            await SendErrorAsync(
+                context,
+                500,
+                "El preview recibido no es válido."
+            );
+
+            return;
+        }
+
+        context.Response.StatusCode =
+            200;
+
+        context.Response.ContentType =
+            "image/jpeg";
+
+        context.Response.ContentLength64 =
+            imageBytes.Length;
+
+        context.Response.Headers["Cache-Control"] =
+            "no-store";
+
+        await context.Response.OutputStream
+            .WriteAsync(imageBytes);
+
+        context.Response.Close();
+    }
     // ==========================================
     // RESPUESTA JSON
     // ==========================================

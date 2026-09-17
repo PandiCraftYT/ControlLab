@@ -149,6 +149,21 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
     // ==========================================
+    // preview
+    // ==========================================
+    public async Task<bool> RequestPreviewAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/preview",
+                null,
+                cancellationToken);
+
+        return response.IsSuccessStatusCode;
+    }
+    // ==========================================
     // REINICIAR SESION
     // ==========================================
     public async Task<bool> RestartAgentAsync(

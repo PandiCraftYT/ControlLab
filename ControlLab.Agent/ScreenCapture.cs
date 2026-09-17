@@ -6,6 +6,10 @@ namespace ControlLab.Agent;
 
 public static class ScreenCapture
 {
+    // ==========================================
+    // CAPTURA NORMAL
+    // ==========================================
+
     public static string CaptureScreen()
     {
         string filePath = Path.Combine(
@@ -13,90 +17,169 @@ public static class ScreenCapture
             "captura-prueba.jpg"
         );
 
-        Rectangle bounds =
+        var bounds =
             System.Windows.Forms.Screen.PrimaryScreen?.Bounds
-            ?? throw new InvalidOperationException(
-                "No se pudo obtener el tamaño de la pantalla."
+            ?? new Rectangle(0, 0, 1280, 720);
+
+        using var bitmap =
+            new Bitmap(
+                bounds.Width,
+                bounds.Height
             );
 
-        using Bitmap original = new(
-            bounds.Width,
-            bounds.Height
+        using (var graphics =
+            Graphics.FromImage(bitmap))
+        {
+            graphics.CopyFromScreen(
+                bounds.Left,
+                bounds.Top,
+                0,
+                0,
+                bounds.Size
+            );
+        }
+
+        using var resized =
+            ResizeImage(
+                bitmap,
+                1280,
+                720
+            );
+
+        SaveJpeg(
+            resized,
+            filePath,
+            60L
         );
 
-        using Graphics graphics =
-            Graphics.FromImage(original);
+        return filePath;
+    }
 
-        graphics.CopyFromScreen(
-            bounds.Left,
-            bounds.Top,
-            0,
-            0,
-            bounds.Size
+    // ==========================================
+    // CAPTURA EXCLUSIVA PARA PREVIEW
+    // ==========================================
+
+    public static string CapturePreview()
+    {
+        string filePath = Path.Combine(
+            AppContext.BaseDirectory,
+            "preview.jpg"
         );
 
-        // ==========================================
-        // REDUCIR A 1280x720 COMO MÁXIMO
-        // ==========================================
+        var bounds =
+            System.Windows.Forms.Screen.PrimaryScreen?.Bounds
+            ?? new Rectangle(0, 0, 1280, 720);
 
-        const int maxWidth = 1280;
-        const int maxHeight = 720;
+        using var bitmap =
+            new Bitmap(
+                bounds.Width,
+                bounds.Height
+            );
 
-        double scale =
+        using (var graphics =
+            Graphics.FromImage(bitmap))
+        {
+            graphics.CopyFromScreen(
+                bounds.Left,
+                bounds.Top,
+                0,
+                0,
+                bounds.Size
+            );
+        }
+
+        using var preview =
+            ResizeImage(
+                bitmap,
+                320,
+                180
+            );
+
+        SaveJpeg(
+            preview,
+            filePath,
+            50L
+        );
+
+        return filePath;
+    }
+
+    // ==========================================
+    // REDIMENSIONAR IMAGEN
+    // ==========================================
+
+    private static Bitmap ResizeImage(
+        Bitmap source,
+        int maxWidth,
+        int maxHeight)
+    {
+        double ratioX =
+            (double)maxWidth / source.Width;
+
+        double ratioY =
+            (double)maxHeight / source.Height;
+
+        double ratio =
             Math.Min(
-                (double)maxWidth / original.Width,
-                (double)maxHeight / original.Height
+                ratioX,
+                ratioY
             );
 
-        scale = Math.Min(scale, 1.0);
-
-        int newWidth =
+        int width =
             Math.Max(
                 1,
-                (int)(original.Width * scale)
+                (int)(source.Width * ratio)
             );
 
-        int newHeight =
+        int height =
             Math.Max(
                 1,
-                (int)(original.Height * scale)
+                (int)(source.Height * ratio)
             );
 
-        using Bitmap resized =
-            new(
-                newWidth,
-                newHeight
+        var result =
+            new Bitmap(
+                width,
+                height
             );
 
-        using Graphics resizedGraphics =
-            Graphics.FromImage(resized);
+        using var graphics =
+            Graphics.FromImage(result);
 
-        resizedGraphics.InterpolationMode =
+        graphics.InterpolationMode =
             InterpolationMode.HighQualityBicubic;
 
-        resizedGraphics.CompositingQuality =
+        graphics.CompositingQuality =
             CompositingQuality.HighQuality;
 
-        resizedGraphics.SmoothingMode =
+        graphics.SmoothingMode =
             SmoothingMode.HighQuality;
 
-        resizedGraphics.PixelOffsetMode =
+        graphics.PixelOffsetMode =
             PixelOffsetMode.HighQuality;
 
-        resizedGraphics.DrawImage(
-            original,
+        graphics.DrawImage(
+            source,
             new Rectangle(
                 0,
                 0,
-                newWidth,
-                newHeight
+                width,
+                height
             )
         );
 
-        // ==========================================
-        // JPEG CALIDAD 60
-        // ==========================================
+        return result;
+    }
 
+    // ==========================================
+    // GUARDAR JPEG
+    // ==========================================
+
+    private static void SaveJpeg(
+        Bitmap bitmap,
+        string filePath,
+        long quality)
+    {
         ImageCodecInfo? jpegCodec =
             ImageCodecInfo.GetImageEncoders()
                 .FirstOrDefault(
@@ -107,29 +190,27 @@ public static class ScreenCapture
 
         if (jpegCodec == null)
         {
-            resized.Save(
+            bitmap.Save(
                 filePath,
                 ImageFormat.Jpeg
             );
 
-            return filePath;
+            return;
         }
 
-        using EncoderParameters encoderParameters =
-            new(1);
+        using var encoderParameters =
+            new EncoderParameters(1);
 
         encoderParameters.Param[0] =
             new EncoderParameter(
-                System.Drawing.Imaging.Encoder.Quality,
-                60L
+                Encoder.Quality,
+                quality
             );
 
-        resized.Save(
+        bitmap.Save(
             filePath,
             jpegCodec,
             encoderParameters
         );
-
-        return filePath;
     }
 }

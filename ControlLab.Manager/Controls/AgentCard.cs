@@ -1,15 +1,23 @@
 using System;
+using System.Net.Http;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
+using System.Windows.Media.Imaging;
+using System.IO;
 using ControlLab.Manager.Models;
-
+using System.Threading;
 namespace ControlLab.Manager.Controls;
 
 public static class AgentCard
 {
+    private static readonly HttpClient HttpClient = new();
+
+    private const string ServerUrl =
+        "http://localhost:8080";
+
     public static Border Create(
         string machineId,
         AgentInfo? agent,
@@ -19,7 +27,8 @@ public static class AgentCard
             agent != null &&
             agent.Status.Equals(
                 "online",
-                StringComparison.OrdinalIgnoreCase);
+                StringComparison.OrdinalIgnoreCase
+            );
 
         bool authorized =
             agent != null &&
@@ -30,9 +39,8 @@ public static class AgentCard
                 ? agent.DisplayName
                 : machineId;
 
-
         // ==========================================
-        // COLORES DE ESTADO
+        // COLORES
         // ==========================================
 
         var statusColor =
@@ -45,262 +53,231 @@ public static class AgentCard
                 ? Color.FromRgb(50, 213, 131)
                 : Color.FromRgb(255, 180, 70);
 
-
         var cardBackground =
             new SolidColorBrush(
-                Color.FromRgb(17, 24, 33));
+                Color.FromRgb(17, 24, 33)
+            );
 
         var borderBrush =
             new SolidColorBrush(
-                Color.FromRgb(32, 43, 55));
-
+                Color.FromRgb(32, 43, 55)
+            );
 
         // ==========================================
         // TARJETA
         // ==========================================
 
-        var card = new Border
-        {
-            Width = 250,
-            Height = 190,
+        var card =
+            new Border
+            {
+                Width = 250,
+                Height = 230,
 
-            Background = cardBackground,
+                Background =
+                    cardBackground,
 
-            BorderBrush = borderBrush,
-            BorderThickness = new Thickness(1),
+                BorderBrush =
+                    borderBrush,
 
-            CornerRadius = new CornerRadius(12),
+                BorderThickness =
+                    new Thickness(1),
 
-            Margin = new Thickness(0, 0, 14, 14),
+                CornerRadius =
+                    new CornerRadius(12),
 
-            Padding = new Thickness(16),
+                Margin =
+                    new Thickness(0, 0, 14, 14),
 
-            Cursor = Cursors.Hand
-        };
-
+                Cursor =
+                    Cursors.Hand
+            };
 
         // ==========================================
-        // CONTENIDO
+        // CONTENIDO PRINCIPAL
         // ==========================================
 
         var content =
+            new Grid
+            {
+                Margin =
+                    new Thickness(12)
+            };
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    new GridLength(
+                        110
+                    )
+            });
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto
+            });
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto
+            });
+
+        content.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star
+                    )
+            });
+
+        // ==========================================
+        // PREVIEW
+        // ==========================================
+
+        var previewBorder =
+            new Border
+            {
+                Height = 110,
+
+                Background =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            10,
+                            14,
+                            20
+                        )
+                    ),
+
+                BorderBrush =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            35,
+                            48,
+                            62
+                        )
+                    ),
+
+                BorderThickness =
+                    new Thickness(1),
+
+                CornerRadius =
+                    new CornerRadius(9),
+
+                ClipToBounds = true
+            };
+
+        var previewGrid =
             new Grid();
 
-
-        content.RowDefinitions.Add(
-            new RowDefinition
+        var previewImage =
+            new Image
             {
-                Height = GridLength.Auto
-            });
+                Stretch =
+                    Stretch.UniformToFill,
 
-        content.RowDefinitions.Add(
-            new RowDefinition
+                HorizontalAlignment =
+                    HorizontalAlignment.Center,
+
+                VerticalAlignment =
+                    VerticalAlignment.Center
+            };
+
+        previewGrid.Children.Add(
+            previewImage
+        );
+
+        // ==========================================
+        // ESTADO DE PREVIEW
+        // ==========================================
+
+        var previewText =
+            new TextBlock
             {
-                Height = GridLength.Auto
-            });
+                Text =
+                    online
+                        ? "Cargando preview..."
+                        : "Sin conexión",
 
-        content.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height = new GridLength(1, GridUnitType.Star)
-            });
+                Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            101,
+                            120,
+                            141
+                        )
+                    ),
 
-        content.RowDefinitions.Add(
-            new RowDefinition
-            {
-                Height = GridLength.Auto
-            });
+                FontSize = 10,
 
+                HorizontalAlignment =
+                    HorizontalAlignment.Center,
+
+                VerticalAlignment =
+                    VerticalAlignment.Center
+            };
+
+        previewGrid.Children.Add(
+            previewText
+        );
+
+        previewBorder.Child =
+            previewGrid;
+
+        Grid.SetRow(
+            previewBorder,
+            0
+        );
+
+        content.Children.Add(
+            previewBorder
+        );
 
         // ==========================================
         // ENCABEZADO
         // ==========================================
 
         var header =
-            new Grid();
-
-        header.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width = GridLength.Auto
-            });
-
-        header.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width = new GridLength(
-                    1,
-                    GridUnitType.Star)
-            });
-
-        header.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width = GridLength.Auto
-            });
-
-
-        // ==========================================
-        // ICONO PC
-        // ==========================================
-
-        var computerIcon =
-            new Border
-            {
-                Width = 42,
-                Height = 42,
-
-                Background =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            19,
-                            33,
-                            47)),
-
-                BorderBrush =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            35,
-                            59,
-                            80)),
-
-                BorderThickness =
-                    new Thickness(1),
-
-                CornerRadius =
-                    new CornerRadius(9)
-            };
-
-
-        var computer =
             new Grid
             {
-                Width = 30,
-                Height = 30
-            };
-
-
-        // Monitor
-
-        var monitor =
-            new Border
-            {
-                Width = 25,
-                Height = 18,
-
-                BorderBrush =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            85,
-                            169,
-                            255)),
-
-                BorderThickness =
-                    new Thickness(2),
-
-                CornerRadius =
-                    new CornerRadius(2),
-
-                HorizontalAlignment =
-                    HorizontalAlignment.Center,
-
-                VerticalAlignment =
-                    VerticalAlignment.Top,
-
                 Margin =
-                    new Thickness(0, 2, 0, 0)
+                    new Thickness(
+                        0,
+                        9,
+                        0,
+                        0
+                    )
             };
 
-        computer.Children.Add(monitor);
-
-
-        // Soporte
-
-        var support =
-            new Rectangle
+        header.ColumnDefinitions.Add(
+            new ColumnDefinition
             {
-                Width = 2,
-                Height = 6,
+                Width =
+                    new GridLength(
+                        1,
+                        GridUnitType.Star
+                    )
+            });
 
-                Fill =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            85,
-                            169,
-                            255)),
-
-                HorizontalAlignment =
-                    HorizontalAlignment.Center,
-
-                VerticalAlignment =
-                    VerticalAlignment.Top,
-
-                Margin =
-                    new Thickness(0, 20, 0, 0)
-            };
-
-        computer.Children.Add(support);
-
-
-        // Base
-
-        var baseLine =
-            new Rectangle
+        header.ColumnDefinitions.Add(
+            new ColumnDefinition
             {
-                Width = 15,
-                Height = 2,
+                Width =
+                    GridLength.Auto
+            });
 
-                Fill =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            85,
-                            169,
-                            255)),
-
-                HorizontalAlignment =
-                    HorizontalAlignment.Center,
-
-                VerticalAlignment =
-                    VerticalAlignment.Bottom,
-
-                Margin =
-                    new Thickness(0, 0, 0, 2)
-            };
-
-        computer.Children.Add(baseLine);
-
-
-        computerIcon.Child = computer;
-
-        Grid.SetColumn(
-            computerIcon,
-            0);
-
-        header.Children.Add(
-            computerIcon);
-
-
-        // ==========================================
-        // NOMBRE
-        // ==========================================
-
-        var namePanel =
-            new StackPanel
-            {
-                Margin =
-                    new Thickness(11, 1, 6, 0),
-
-                VerticalAlignment =
-                    VerticalAlignment.Center
-            };
-
-
-        var machineName =
+        var name =
             new TextBlock
             {
-                Text = displayName,
+                Text =
+                    displayName,
 
-                FontSize = 15,
+                FontSize = 14,
 
                 FontWeight =
                     FontWeights.SemiBold,
@@ -309,49 +286,20 @@ public static class AgentCard
                     Brushes.White,
 
                 TextTrimming =
-                    TextTrimming.CharacterEllipsis
-            };
-
-        namePanel.Children.Add(
-            machineName);
-
-
-        var machineIdText =
-            new TextBlock
-            {
-                Text = machineId,
-
-                FontSize = 9,
-
-                Foreground =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            101,
-                            120,
-                            141)),
-
-                TextTrimming =
                     TextTrimming.CharacterEllipsis,
 
-                Margin =
-                    new Thickness(0, 2, 0, 0)
+                VerticalAlignment =
+                    VerticalAlignment.Center
             };
 
-        namePanel.Children.Add(
-            machineIdText);
-
-
         Grid.SetColumn(
-            namePanel,
-            1);
+            name,
+            0
+        );
 
         header.Children.Add(
-            namePanel);
-
-
-        // ==========================================
-        // ESTADO ONLINE / OFFLINE
-        // ==========================================
+            name
+        );
 
         var status =
             new TextBlock
@@ -363,7 +311,8 @@ public static class AgentCard
 
                 Foreground =
                     new SolidColorBrush(
-                        statusColor),
+                        statusColor
+                    ),
 
                 FontSize = 9,
 
@@ -371,24 +320,26 @@ public static class AgentCard
                     FontWeights.Bold,
 
                 VerticalAlignment =
-                    VerticalAlignment.Top
+                    VerticalAlignment.Center
             };
 
         Grid.SetColumn(
             status,
-            2);
+            1
+        );
 
         header.Children.Add(
-            status);
-
+            status
+        );
 
         Grid.SetRow(
             header,
-            0);
+            1
+        );
 
         content.Children.Add(
-            header);
-
+            header
+        );
 
         // ==========================================
         // AUTORIZACIÓN
@@ -404,65 +355,91 @@ public static class AgentCard
 
                 Foreground =
                     new SolidColorBrush(
-                        authorizationColor),
+                        authorizationColor
+                    ),
 
-                FontSize = 10,
+                FontSize = 9,
 
                 FontWeight =
                     FontWeights.Bold,
 
                 Margin =
                     new Thickness(
-                        53,
-                        5,
                         0,
-                        0)
+                        4,
+                        0,
+                        0
+                    )
             };
 
         Grid.SetRow(
             authorization,
-            1);
+            2
+        );
 
         content.Children.Add(
-            authorization);
-
+            authorization
+        );
 
         // ==========================================
-        // INFORMACIÓN
+        // INFORMACIÓN INFERIOR
         // ==========================================
 
         var info =
-            new StackPanel
+            new Grid
             {
                 Margin =
                     new Thickness(
                         0,
-                        10,
+                        6,
                         0,
-                        0)
+                        0
+                    )
             };
 
+        info.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto
+            });
 
-        // HOSTNAME
+        info.RowDefinitions.Add(
+            new RowDefinition
+            {
+                Height =
+                    GridLength.Auto
+            });
 
-        var hostnameLabel =
+        var machineIdText =
             new TextBlock
             {
-                Text = "HOSTNAME",
+                Text =
+                    machineId,
 
-                FontSize = 8,
+                FontSize = 9,
 
                 Foreground =
                     new SolidColorBrush(
                         Color.FromRgb(
                             101,
                             120,
-                            141))
+                            141
+                        )
+                    ),
+
+                TextTrimming =
+                    TextTrimming.CharacterEllipsis
             };
 
-        info.Children.Add(
-            hostnameLabel);
+        Grid.SetRow(
+            machineIdText,
+            0
+        );
 
+        info.Children.Add(
+            machineIdText
+        );
 
         var hostname =
             new TextBlock
@@ -472,16 +449,24 @@ public static class AgentCard
                         ? agent!.Hostname
                         : "Sin conexión",
 
-                FontSize = 11,
+                FontSize = 9,
 
                 Foreground =
                     online
-                        ? Brushes.White
+                        ? new SolidColorBrush(
+                            Color.FromRgb(
+                                147,
+                                164,
+                                184
+                            )
+                        )
                         : new SolidColorBrush(
                             Color.FromRgb(
                                 102,
                                 119,
-                                138)),
+                                138
+                            )
+                        ),
 
                 TextTrimming =
                     TextTrimming.CharacterEllipsis,
@@ -489,214 +474,281 @@ public static class AgentCard
                 Margin =
                     new Thickness(
                         0,
-                        2,
+                        3,
                         0,
-                        7)
+                        0
+                    )
             };
 
-        info.Children.Add(
-            hostname);
-
-
-        // HEARTBEAT
-
-        var heartbeatLabel =
-            new TextBlock
-            {
-                Text = "ÚLTIMO HEARTBEAT",
-
-                FontSize = 8,
-
-                Foreground =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            101,
-                            120,
-                            141))
-            };
+        Grid.SetRow(
+            hostname,
+            1
+        );
 
         info.Children.Add(
-            heartbeatLabel);
-
-
-        var heartbeat =
-            new TextBlock
-            {
-                Text =
-                    online
-                        ? agent!.LastHeartbeat
-                        : "—",
-
-                FontSize = 10,
-
-                Foreground =
-                    new SolidColorBrush(
-                        Color.FromRgb(
-                            147,
-                            164,
-                            184)),
-
-                TextTrimming =
-                    TextTrimming.CharacterEllipsis,
-
-                Margin =
-                    new Thickness(
-                        0,
-                        2,
-                        0,
-                        0)
-            };
-
-        info.Children.Add(
-            heartbeat);
-
+            hostname
+        );
 
         Grid.SetRow(
             info,
-            2);
+            3
+        );
 
         content.Children.Add(
-            info);
+            info
+        );
 
+        card.Child =
+            content;
+        
+        var previewCancellation =
+            new CancellationTokenSource();
+
+        card.Unloaded += (_, _) =>
+        {
+            previewCancellation.Cancel();
+            previewCancellation.Dispose();
+        };
+        // ==========================================
+        // CARGAR PREVIEW
+        // ==========================================
+
+        if (online && authorized)
+        {
+            _ = StartPreviewLoopAsync(
+                machineId,
+                previewImage,
+                previewText,
+                previewCancellation.Token
+            );
+        }
+        else if (!authorized)
+        {
+            previewText.Text =
+                "Equipo no autorizado";
+        }
 
         // ==========================================
-        // PIE DE TARJETA
+        // EFECTO HOVER
         // ==========================================
 
-        var footer =
-            new Grid
+        card.MouseEnter +=
+            (_, _) =>
             {
-                Margin =
-                    new Thickness(
-                        0,
-                        7,
-                        0,
-                        0)
-            };
-
-
-        footer.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width =
-                    new GridLength(
-                        1,
-                        GridUnitType.Star)
-            });
-
-        footer.ColumnDefinitions.Add(
-            new ColumnDefinition
-            {
-                Width =
-                    GridLength.Auto
-            });
-
-
-        var version =
-            new TextBlock
-            {
-                Text =
-                    online
-                        ? $"Agente v{agent!.AgentVersion}"
-                        : "Agente no disponible",
-
-                FontSize = 9,
-
-                Foreground =
+                card.Background =
                     new SolidColorBrush(
                         Color.FromRgb(
-                            102,
-                            119,
-                            138))
-            };
+                            23,
+                            34,
+                            46
+                        )
+                    );
 
-        Grid.SetColumn(
-            version,
-            0);
-
-        footer.Children.Add(
-            version);
-
-
-        var arrow =
-            new TextBlock
-            {
-                Text = "→",
-
-                FontSize = 16,
-
-                Foreground =
+                card.BorderBrush =
                     new SolidColorBrush(
                         Color.FromRgb(
-                            85,
-                            169,
-                            255)),
-
-                VerticalAlignment =
-                    VerticalAlignment.Center
+                            53,
+                            82,
+                            108
+                        )
+                    );
             };
 
-        Grid.SetColumn(
-            arrow,
-            1);
+        card.MouseLeave +=
+            (_, _) =>
+            {
+                card.Background =
+                    cardBackground;
 
-        footer.Children.Add(
-            arrow);
-
-
-        Grid.SetRow(
-            footer,
-            3);
-
-        content.Children.Add(
-            footer);
-
-
-        card.Child = content;
-
+                card.BorderBrush =
+                    borderBrush;
+            };
 
         // ==========================================
-        // EFECTO AL PASAR EL MOUSE
+        // CLICK
         // ==========================================
 
-        card.MouseEnter += (_, _) =>
-        {
-            card.Background =
-                new SolidColorBrush(
-                    Color.FromRgb(
-                        23,
-                        34,
-                        46));
-
-            card.BorderBrush =
-                new SolidColorBrush(
-                    Color.FromRgb(
-                        53,
-                        82,
-                        108));
-        };
-
-
-        card.MouseLeave += (_, _) =>
-        {
-            card.Background =
-                cardBackground;
-
-            card.BorderBrush =
-                borderBrush;
-        };
-
-
-        // ==========================================
-        // ABRIR DETALLES
-        // ==========================================
-
-        card.MouseLeftButtonUp += (_, _) =>
-        {
-            onClick();
-        };
-
+        card.MouseLeftButtonUp +=
+            (_, _) =>
+            {
+                onClick();
+            };
 
         return card;
+    }
+    // ==========================================
+    // PreviewAsync
+    // ==========================================
+    private static async Task StartPreviewLoopAsync(
+        string machineId,
+        Image image,
+        TextBlock statusText,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await LoadPreviewAsync(
+                    machineId,
+                    image,
+                    statusText
+                );
+
+                await Task.Delay(
+                    TimeSpan.FromSeconds(5),
+                    cancellationToken
+                );
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"⚠️ Error en loop de preview de {machineId}: {ex.Message}"
+                );
+
+                await Task.Delay(
+                    TimeSpan.FromSeconds(5),
+                    cancellationToken
+                );
+            }
+        }
+    }
+    // ==========================================
+    // OBTENER ÚLTIMA CAPTURA
+    // ==========================================
+
+    private static async Task LoadPreviewAsync(
+        string machineId,
+        Image image,
+        TextBlock statusText)
+    {
+        try
+        {
+            // ==========================================
+            // 1. SOLICITAR NUEVO PREVIEW
+            // ==========================================
+
+            string previewUrl =
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/preview";
+
+            using var previewResponse =
+                await HttpClient.PostAsync(
+                    previewUrl,
+                    null
+                );
+
+            if (!previewResponse.IsSuccessStatusCode)
+            {
+                statusText.Text =
+                    "Preview no disponible";
+
+                return;
+            }
+
+            // ==========================================
+            // 2. ESPERAR A QUE EL AGENT GENERE EL PREVIEW
+            // ==========================================
+
+            string url =
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/preview";
+
+            byte[]? bytes = null;
+
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                try
+                {
+                    byte[] result =
+                        await HttpClient.GetByteArrayAsync(
+                            $"{url}?t={DateTime.UtcNow.Ticks}"
+                        );
+
+                    if (result.Length > 0)
+                    {
+                        bytes = result;
+                        break;
+                    }
+                }
+                catch
+                {
+                    // El preview todavía no está disponible.
+                }
+
+                await Task.Delay(250);
+            }
+
+            if (bytes == null || bytes.Length == 0)
+            {
+                statusText.Text =
+                    "Sin preview";
+
+                return;
+            }
+
+            // ==========================================
+            // 3. MOSTRAR IMAGEN
+            // ==========================================
+
+            await Application.Current.Dispatcher.InvokeAsync(
+                () =>
+                {
+                    try
+                    {
+                        using var stream =
+                            new MemoryStream(bytes);
+
+                        var bitmap =
+                            new BitmapImage();
+
+                        bitmap.BeginInit();
+
+                        bitmap.CacheOption =
+                            BitmapCacheOption.OnLoad;
+
+                        bitmap.StreamSource =
+                            stream;
+
+                        bitmap.EndInit();
+
+                        bitmap.Freeze();
+
+                        image.Source =
+                            bitmap;
+
+                        statusText.Visibility =
+                            Visibility.Collapsed;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(
+                            $"❌ Error mostrando preview de " +
+                            $"{machineId}: {ex.Message}"
+                        );
+
+                        statusText.Text =
+                            "Error de imagen";
+                    }
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"⚠️ Preview no disponible para " +
+                $"{machineId}: {ex.Message}"
+            );
+
+            await Application.Current.Dispatcher.InvokeAsync(
+                () =>
+                {
+                    statusText.Text =
+                        "Sin preview";
+                }
+            );
+        }
     }
 }
