@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.WebSockets;
@@ -43,6 +44,16 @@ public sealed class WebSocketHandler
     > _savePreview;
 
     // =========================================================
+    // STREAMING
+    // =========================================================
+
+    private readonly ConcurrentDictionary<
+        string,
+        ScreenCaptureData
+    > _streamFrames =
+        new();
+
+    // =========================================================
     // BASE DE DATOS
     // =========================================================
 
@@ -78,6 +89,34 @@ public sealed class WebSocketHandler
 
         _isAgentAuthorized =
             isAgentAuthorized;
+    }
+
+    // =========================================================
+    // OBTENER ÚLTIMO FRAME DEL STREAM
+    // =========================================================
+
+    public ScreenCaptureData? GetStreamFrame(
+        string machineId)
+    {
+        return _streamFrames.TryGetValue(
+            machineId,
+            out var frame
+        )
+            ? frame
+            : null;
+    }
+
+    // =========================================================
+    // ELIMINAR FRAME DEL STREAM
+    // =========================================================
+
+    public void RemoveStreamFrame(
+        string machineId)
+    {
+        _streamFrames.TryRemove(
+            machineId,
+            out _
+        );
     }
 
     // =========================================================
@@ -182,6 +221,10 @@ public sealed class WebSocketHandler
                         out _
                     );
                 }
+
+                RemoveStreamFrame(
+                    registeredAgent.MachineId
+                );
             }
 
             try
@@ -314,6 +357,22 @@ public sealed class WebSocketHandler
                             root
                         );
                     }
+
+                    return registeredAgent;
+
+                // =================================================
+                // FRAME DE TRANSMISIÓN
+                // =================================================
+
+                case "SCREEN_STREAM_FRAME":
+
+                    if (registeredAgent == null)
+                        return null;
+
+                    SaveStreamFrame(
+                        socket,
+                        root
+                    );
 
                     return registeredAgent;
 
@@ -963,6 +1022,138 @@ public sealed class WebSocketHandler
         {
             Console.WriteLine(
                 $"⚠️ Preview Base64 inválido: " +
+                $"{machineId}"
+            );
+        }
+    }
+
+    // =========================================================
+    // GUARDAR FRAME DE TRANSMISIÓN
+    // =========================================================
+
+    private void SaveStreamFrame(
+        WebSocket socket,
+        JsonElement root)
+    {
+        string machineId =
+            GetString(
+                root,
+                "machineId"
+            );
+
+        string image =
+            GetString(
+                root,
+                "image"
+            );
+
+        if (
+            string.IsNullOrWhiteSpace(
+                machineId
+            ) ||
+            string.IsNullOrWhiteSpace(
+                image
+            )
+        )
+        {
+            return;
+        }
+
+        // =====================================================
+        // COMPROBAR SOCKET
+        // =====================================================
+
+        if (
+            !_agents.TryGetValue(
+                machineId,
+                out var agent
+            ) ||
+            agent.Socket != socket
+        )
+        {
+            Console.WriteLine(
+                $"⚠️ Frame rechazado: " +
+                $"conexión no autorizada para {machineId}"
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // COMPROBAR AUTORIZACIÓN
+        // =====================================================
+
+        if (
+            !_isAgentAuthorized(
+                machineId
+            )
+        )
+        {
+            Console.WriteLine(
+                $"🔒 Frame rechazado: " +
+                $"Agent no autorizado {machineId}"
+            );
+
+            return;
+        }
+
+        try
+        {
+            byte[] imageBytes =
+                Convert.FromBase64String(
+                    image
+                );
+
+            if (imageBytes.Length == 0)
+                return;
+
+            // =================================================
+            // LÍMITE DE TAMAÑO
+            // =================================================
+
+            if (
+                imageBytes.Length >
+                MaxMessageSize
+            )
+            {
+                Console.WriteLine(
+                    $"⚠️ Frame demasiado grande: " +
+                    $"{machineId}"
+                );
+
+                return;
+            }
+
+            // =================================================
+            // GUARDAR ÚLTIMO FRAME
+            // =================================================
+
+            _streamFrames[machineId] =
+                new ScreenCaptureData
+                {
+                    MachineId =
+                        machineId,
+
+                    Image =
+                        image,
+
+                    Timestamp =
+                        GetString(
+                            root,
+                            "timestamp"
+                        )
+                };
+
+            Console.WriteLine(
+                $"📡 Frame recibido: " +
+                $"{machineId} " +
+                $"({imageBytes.Length / 1024} KB)"
+            );
+        }
+        catch (FormatException)
+        {
+            Console.WriteLine(
+                $"⚠️ Frame Base64 inválido: " +
                 $"{machineId}"
             );
         }

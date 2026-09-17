@@ -49,11 +49,11 @@ public partial class AgentDetailsWindow : Window
     private void LoadAgentInformation()
     {
         bool online =
-        _agent != null &&
-        _agent.Status.Equals(
-            "online",
-            StringComparison.OrdinalIgnoreCase
-        );
+            _agent != null &&
+            _agent.Status.Equals(
+                "online",
+                StringComparison.OrdinalIgnoreCase
+            );
 
         ScreenButton.IsEnabled =
             online &&
@@ -134,7 +134,7 @@ public partial class AgentDetailsWindow : Window
             )
                 ? _agent!.DisplayName
                 : _machineId;
-        
+
         DisplayNameInfoText.Text =
             !string.IsNullOrWhiteSpace(
                 _agent?.DisplayName
@@ -149,18 +149,22 @@ public partial class AgentDetailsWindow : Window
         UpdateAuthorizationUI();
 
         // ==========================================
-        // PANTALLA
+        // BOTONES
         // ==========================================
 
         ScreenButton.IsEnabled =
             online &&
             _authorized;
-        
+
         LockSessionButton.IsEnabled =
             online &&
             _authorized;
 
         RestartButton.IsEnabled =
+            online &&
+            _authorized;
+
+        ShutdownButton.IsEnabled =
             online &&
             _authorized;
     }
@@ -244,11 +248,8 @@ public partial class AgentDetailsWindow : Window
         {
             MessageBox.Show(
                 "Escribe un nombre para el equipo.",
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Warning
             );
 
@@ -261,11 +262,8 @@ public partial class AgentDetailsWindow : Window
         {
             MessageBox.Show(
                 "El nombre no puede superar los 50 caracteres.",
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Warning
             );
 
@@ -297,11 +295,8 @@ public partial class AgentDetailsWindow : Window
                 MessageBox.Show(
                     "No se pudo cambiar el nombre.\n\n" +
                     "Comprueba que el nombre no esté siendo utilizado por otro equipo.",
-
                     "ControlLab",
-
                     MessageBoxButton.OK,
-
                     MessageBoxImage.Warning
                 );
 
@@ -314,15 +309,14 @@ public partial class AgentDetailsWindow : Window
 
             DisplayNameTextBox.Text =
                 displayName;
+
             DisplayNameInfoText.Text =
                 displayName;
+
             MessageBox.Show(
                 $"El equipo ahora se llama:\n\n{displayName}",
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Information
             );
         }
@@ -330,11 +324,8 @@ public partial class AgentDetailsWindow : Window
         {
             MessageBox.Show(
                 $"Error cambiando el nombre del equipo:\n\n{ex.Message}",
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Error
             );
         }
@@ -379,11 +370,8 @@ public partial class AgentDetailsWindow : Window
                 {
                     MessageBox.Show(
                         $"No se pudo autorizar el equipo {_machineId}.",
-
                         "ControlLab",
-
                         MessageBoxButton.OK,
-
                         MessageBoxImage.Warning
                     );
 
@@ -422,11 +410,8 @@ public partial class AgentDetailsWindow : Window
 
                 MessageBox.Show(
                     $"El equipo {_machineId} ha sido autorizado correctamente.",
-
                     "ControlLab",
-
                     MessageBoxButton.OK,
-
                     MessageBoxImage.Information
                 );
 
@@ -441,11 +426,8 @@ public partial class AgentDetailsWindow : Window
                 MessageBox.Show(
                     $"¿Deseas revocar la autorización de {_machineId}?\n\n" +
                     "El equipo dejará de estar autorizado para conectarse al Manager.",
-
                     "Revocar autorización",
-
                     MessageBoxButton.YesNo,
-
                     MessageBoxImage.Warning
                 );
 
@@ -472,11 +454,8 @@ public partial class AgentDetailsWindow : Window
             {
                 MessageBox.Show(
                     $"No se pudo revocar la autorización de {_machineId}.",
-
                     "ControlLab",
-
                     MessageBoxButton.OK,
-
                     MessageBoxImage.Warning
                 );
 
@@ -490,18 +469,22 @@ public partial class AgentDetailsWindow : Window
 
             UpdateAuthorizationUI();
 
-            ScreenButton.IsEnabled = false;
-            LockSessionButton.IsEnabled = false;
-            RestartButton.IsEnabled = false;
-            ShutdownButton.IsEnabled = false;
+            ScreenButton.IsEnabled =
+                false;
+
+            LockSessionButton.IsEnabled =
+                false;
+
+            RestartButton.IsEnabled =
+                false;
+
+            ShutdownButton.IsEnabled =
+                false;
 
             MessageBox.Show(
                 $"La autorización de {_machineId} ha sido revocada.",
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Information
             );
         }
@@ -510,11 +493,8 @@ public partial class AgentDetailsWindow : Window
             MessageBox.Show(
                 $"Error modificando la autorización de {_machineId}:\n\n" +
                 ex.Message,
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Error
             );
 
@@ -528,6 +508,7 @@ public partial class AgentDetailsWindow : Window
             UpdateAuthorizationUI();
         }
     }
+
     // ==========================================
     // BLOQUEAR SESIÓN
     // ==========================================
@@ -550,8 +531,11 @@ public partial class AgentDetailsWindow : Window
 
         try
         {
-            LockSessionButton.IsEnabled = false;
-            LockSessionButton.Content = "Bloqueando...";
+            LockSessionButton.IsEnabled =
+                false;
+
+            LockSessionButton.Content =
+                "Bloqueando...";
 
             bool success =
                 await _api.LockSessionAsync(
@@ -625,8 +609,11 @@ public partial class AgentDetailsWindow : Window
 
         try
         {
-            RestartButton.IsEnabled = false;
-            RestartButton.Content = "Reiniciando...";
+            RestartButton.IsEnabled =
+                false;
+
+            RestartButton.Content =
+                "Reiniciando...";
 
             bool success =
                 await _api.RestartAgentAsync(
@@ -656,8 +643,7 @@ public partial class AgentDetailsWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Error reiniciando {_machineId}:\n\n" +
-                ex.Message,
+                $"Error reiniciando {_machineId}:\n\n{ex.Message}",
                 "ControlLab",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error
@@ -666,14 +652,21 @@ public partial class AgentDetailsWindow : Window
         finally
         {
             RestartButton.IsEnabled =
-            _agent != null &&
-            _agent.Status.Equals(
-                "online",
-                StringComparison.OrdinalIgnoreCase
-            ) &&
-            _authorized;
+                _agent != null &&
+                _agent.Status.Equals(
+                    "online",
+                    StringComparison.OrdinalIgnoreCase
+                ) &&
+                _authorized;
+
+            RestartButton.Content =
+                "Reiniciar PC";
         }
     }
+
+    // ==========================================
+    // APAGAR PC
+    // ==========================================
 
     private async void ShutdownButton_Click(
         object sender,
@@ -693,7 +686,11 @@ public partial class AgentDetailsWindow : Window
 
         try
         {
-            ShutdownButton.IsEnabled = false;
+            ShutdownButton.IsEnabled =
+                false;
+
+            ShutdownButton.Content =
+                "Apagando...";
 
             bool success =
                 await _api.ShutdownAgentAsync(
@@ -723,8 +720,7 @@ public partial class AgentDetailsWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Error apagando {_machineId}:\n\n" +
-                ex.Message,
+                $"Error apagando {_machineId}:\n\n{ex.Message}",
                 "ControlLab",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error
@@ -739,47 +735,54 @@ public partial class AgentDetailsWindow : Window
                     StringComparison.OrdinalIgnoreCase
                 ) &&
                 _authorized;
+
+            ShutdownButton.Content =
+                "Apagar PC";
         }
     }
+
     // ==========================================
-    // VER PANTALLA
+    // VER PANTALLA EN VIVO
     // ==========================================
 
     private async void ScreenButton_Click(
         object sender,
         RoutedEventArgs e)
     {
+        bool streamStarted =
+            false;
+
         try
         {
-            ScreenButton.IsEnabled =
-                false;
-
-            ScreenButton.Content =
-                "Solicitando captura...";
-
             // ==========================================
-            // SOLICITAR CAPTURA
+            // VALIDAR ESTADO
             // ==========================================
 
-            var response =
-                await _api.RequestScreenAsync(
-                    _machineId
-                );
-
-            string responseText =
-                await response.Content
-                    .ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
+            if (!_authorized)
             {
                 MessageBox.Show(
-                    $"No se pudo solicitar la pantalla de {_machineId}.\n\n" +
-                    responseText,
-
+                    $"El equipo {_machineId} no está autorizado.",
                     "ControlLab",
-
                     MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
 
+                return;
+            }
+
+            bool online =
+                _agent != null &&
+                _agent.Status.Equals(
+                    "online",
+                    StringComparison.OrdinalIgnoreCase
+                );
+
+            if (!online)
+            {
+                MessageBox.Show(
+                    $"El equipo {_machineId} no está conectado.",
+                    "ControlLab",
+                    MessageBoxButton.OK,
                     MessageBoxImage.Warning
                 );
 
@@ -787,57 +790,31 @@ public partial class AgentDetailsWindow : Window
             }
 
             // ==========================================
-            // ESPERAR CAPTURA
+            // DESHABILITAR BOTÓN
             // ==========================================
 
+            ScreenButton.IsEnabled =
+                false;
+
             ScreenButton.Content =
-                "Recibiendo pantalla...";
+                "Iniciando transmisión...";
 
-            byte[]? imageBytes =
-                null;
+            // ==========================================
+            // INICIAR STREAM EN EL AGENT
+            // ==========================================
 
-            for (
-                int attempt = 0;
-                attempt < 20;
-                attempt++)
-            {
-                await Task.Delay(250);
+            streamStarted =
+                await _api.StartScreenStreamAsync(
+                    _machineId
+                );
 
-                try
-                {
-                    imageBytes =
-                        await _api.GetScreenAsync(
-                            _machineId
-                        );
-
-                    if (
-                        imageBytes.Length > 0
-                    )
-                    {
-                        break;
-                    }
-
-                    imageBytes =
-                        null;
-                }
-                catch
-                {
-                    // La captura todavía no está disponible.
-                }
-            }
-
-            if (
-                imageBytes == null ||
-                imageBytes.Length == 0
-            )
+            if (!streamStarted)
             {
                 MessageBox.Show(
-                    $"No se recibió una captura de {_machineId}.",
-
+                    $"No se pudo iniciar la transmisión de pantalla de {_machineId}.\n\n" +
+                    "Comprueba que el equipo esté conectado y autorizado.",
                     "ControlLab",
-
                     MessageBoxButton.OK,
-
                     MessageBoxImage.Warning
                 );
 
@@ -848,10 +825,13 @@ public partial class AgentDetailsWindow : Window
             // ABRIR VISOR
             // ==========================================
 
+            ScreenButton.Content =
+                "Abriendo visor...";
+
             var remoteScreen =
                 new RemoteScreenWindow(
                     _machineId,
-                    imageBytes,
+                    Array.Empty<byte>(),
                     _api
                 )
                 {
@@ -863,18 +843,37 @@ public partial class AgentDetailsWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Error obteniendo la pantalla de {_machineId}:\n\n" +
+                $"Error iniciando la pantalla en vivo de {_machineId}:\n\n" +
                 ex.Message,
-
                 "ControlLab",
-
                 MessageBoxButton.OK,
-
                 MessageBoxImage.Error
             );
         }
         finally
         {
+            // ==========================================
+            // DETENER STREAM
+            // ==========================================
+
+            if (streamStarted)
+            {
+                try
+                {
+                    await _api.StopScreenStreamAsync(
+                        _machineId
+                    );
+                }
+                catch
+                {
+                    // El Agent puede haberse desconectado.
+                }
+            }
+
+            // ==========================================
+            // RESTAURAR BOTÓN
+            // ==========================================
+
             ScreenButton.IsEnabled =
                 _agent != null &&
                 _agent.Status.Equals(

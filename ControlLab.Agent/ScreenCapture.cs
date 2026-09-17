@@ -213,4 +213,120 @@ public static class ScreenCapture
             encoderParameters
         );
     }
+
+   public static byte[] CaptureStreamFrame()
+    {
+        Screen screen =
+            Screen.PrimaryScreen
+            ?? throw new InvalidOperationException(
+                "No se encontró la pantalla principal."
+            );
+
+        Rectangle bounds =
+            screen.Bounds;
+
+        using var source =
+            new Bitmap(
+                bounds.Width,
+                bounds.Height
+            );
+
+        using (Graphics graphics =
+            Graphics.FromImage(source))
+        {
+            graphics.CopyFromScreen(
+                bounds.Left,
+                bounds.Top,
+                0,
+                0,
+                source.Size
+            );
+        }
+
+        const int maxWidth = 640;
+        const int maxHeight = 360;
+
+        double scale =
+            Math.Min(
+                (double)maxWidth / source.Width,
+                (double)maxHeight / source.Height
+            );
+
+        int width =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    source.Width * scale
+                )
+            );
+
+        int height =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    source.Height * scale
+                )
+            );
+
+        using var resized =
+            new Bitmap(
+                width,
+                height
+            );
+
+        using (Graphics graphics =
+            Graphics.FromImage(resized))
+        {
+            graphics.InterpolationMode =
+                System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+
+            graphics.SmoothingMode =
+                System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+
+            graphics.PixelOffsetMode =
+                System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+
+            graphics.DrawImage(
+                source,
+                new Rectangle(
+                    0,
+                    0,
+                    width,
+                    height
+                )
+            );
+        }
+
+        using var stream =
+            new MemoryStream();
+
+        var jpegCodec =
+            System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders()
+                .FirstOrDefault(codec =>
+                    codec.FormatID ==
+                    System.Drawing.Imaging.ImageFormat.Jpeg.Guid
+                );
+
+        if (jpegCodec == null)
+            throw new InvalidOperationException(
+                "No se encontró el codificador JPEG."
+            );
+
+        using var encoderParameters =
+            new System.Drawing.Imaging.EncoderParameters(1);
+
+        encoderParameters.Param[0] =
+            new System.Drawing.Imaging.EncoderParameter(
+                System.Drawing.Imaging.Encoder.Quality,
+                50L
+            );
+
+        resized.Save(
+            stream,
+            jpegCodec,
+            encoderParameters
+        );
+
+        return stream.ToArray();
+    }
 }

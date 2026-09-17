@@ -1,53 +1,63 @@
-using System.IO;
+using System.Net.WebSockets;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-
-using ControlLab.Manager.Services;
-
+using System.IO;
 namespace ControlLab.Manager.Views;
 
 public partial class RemoteScreenWindow : Window
 {
-    private readonly ControlLabApi _api;
-
     private readonly string _machineId;
 
     private CancellationTokenSource? _cancellation;
 
+    private ClientWebSocket? _socket;
+
+    private Task? _receiveTask;
+
+    private bool _closing;
+
     public RemoteScreenWindow(
         string machineId,
         byte[] initialImage,
-        ControlLabApi api)
+        ControlLab.Manager.Services.ControlLabApi api)
     {
         InitializeComponent();
 
         _machineId =
             machineId;
 
-        _api =
-            api;
-
         Title =
             $"ControlLab — Pantalla de {_machineId}";
 
-        SetImageSource(
-            initialImage
-        );
+        // ---------------------------------------------------------
+        // Mostrar la captura inicial mientras conecta el stream
+        // ---------------------------------------------------------
+
+        if (
+            IsValidJpeg(
+                initialImage
+            )
+        )
+        {
+            SetImageSource(
+                initialImage
+            );
+        }
 
         StatusText.Text =
-            $"● {_machineId}  •  Conectada";
+            $"● {_machineId}  •  Conectando transmisión...";
 
         Closed +=
             (_, _) =>
             {
-                _cancellation?.Cancel();
+                _ = StopAsync();
             };
     }
 
-    // ==========================================
-    // MOSTRAR Y ACTUALIZAR
-    // ==========================================
+    // =========================================================
+    // INICIAR TRANSMISIÓN
+    // =========================================================
 
     public async Task StartAsync()
     {
@@ -58,207 +68,291 @@ public partial class RemoteScreenWindow : Window
 
         try
         {
-            await UpdateLoopAsync(
+            await StartStreamAsync(
                 _cancellation.Token
             );
         }
-        catch (OperationCanceledException)
+        catch (
+            OperationCanceledException
+        )
         {
             // Ventana cerrada.
         }
-        finally
+        catch (Exception ex)
         {
-            _cancellation.Dispose();
+            StatusText.Text =
+                $"● {_machineId}  •  Error de transmisión";
 
-            _cancellation = null;
+            StatusText.Foreground =
+                new SolidColorBrush(
+                    Color.FromRgb(
+                        249,
+                        112,
+                        102
+                    )
+                );
+
+            Console.WriteLine(
+                $"❌ Error iniciando transmisión de {_machineId}: " +
+                $"{ex.Message}"
+            );
         }
     }
 
-    // ==========================================
-    // ACTUALIZAR PANTALLA
-    // ==========================================
+    // =========================================================
+    // CONECTAR STREAM
+    // =========================================================
 
-    private async Task UpdateLoopAsync(
+    private async Task StartStreamAsync(
         CancellationToken cancellationToken)
     {
+        _socket =
+            new ClientWebSocket();
+
+        Uri streamUri =
+            new Uri(
+                "ws://localhost:8080/ws/screen/" +
+                Uri.EscapeDataString(
+                    _machineId
+                )
+            );
+
+        Console.WriteLine(
+            $"📡 Conectando transmisión: {streamUri}"
+        );
+
+        await _socket.ConnectAsync(
+            streamUri,
+            cancellationToken
+        );
+
+        StatusText.Text =
+            $"● {_machineId}  •  EN VIVO";
+
+        StatusText.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    50,
+                    213,
+                    131
+                )
+            );
+
+        Console.WriteLine(
+            $"🟢 Transmisión conectada: {_machineId}"
+        );
+
+        _receiveTask =
+            ReceiveFramesAsync(
+                _socket,
+                cancellationToken
+            );
+
+        await _receiveTask;
+    }
+
+    // =========================================================
+    // RECIBIR FRAMES
+    // =========================================================
+
+    private async Task ReceiveFramesAsync(
+        ClientWebSocket socket,
+        CancellationToken cancellationToken)
+    {
+        byte[] buffer =
+            new byte[
+                1024 * 1024
+            ];
+
         while (
-            !cancellationToken
-                .IsCancellationRequested
+            socket.State ==
+            WebSocketState.Open
         )
         {
+            WebSocketReceiveResult result;
+
+            using var memory =
+                new MemoryStream();
+
             try
             {
-                await Task.Delay(
-                    1000,
-                    cancellationToken
-                );
-
-                if (
-                    cancellationToken
-                        .IsCancellationRequested
-                )
+                do
                 {
-                    break;
-                }
+                    result =
+                        await socket.ReceiveAsync(
+                            new ArraySegment<byte>(
+                                buffer
+                            ),
+                            cancellationToken
+                        );
 
-                // ------------------------------------------
-                // SOLICITAR NUEVA CAPTURA
-                // ------------------------------------------
+                    if (
+                        result.MessageType ==
+                        WebSocketMessageType.Close
+                    )
+                    {
+                        return;
+                    }
 
-                var response =
-                    await _api.RequestScreenAsync(
-                        _machineId
-                    );
+                    if (
+                        result.MessageType !=
+                        WebSocketMessageType.Binary
+                    )
+                    {
+                        continue;
+                    }
 
-                if (
-                    !response.IsSuccessStatusCode
-                )
-                {
-                    SetOfflineStatus();
-
-                    continue;
-                }
-
-                // ------------------------------------------
-                // ESPERAR CAPTURA
-                // ------------------------------------------
-
-                byte[]? image =
-                    await WaitForImageAsync(
+                    await memory.WriteAsync(
+                        buffer.AsMemory(
+                            0,
+                            result.Count
+                        ),
                         cancellationToken
                     );
 
+                    if (
+                        memory.Length >
+                        8 * 1024 * 1024
+                    )
+                    {
+                        throw new InvalidOperationException(
+                            "El frame recibido supera el tamaño permitido."
+                        );
+                    }
+
+                }
+                while (
+                    !result.EndOfMessage
+                );
+
+                byte[] imageBytes =
+                    memory.ToArray();
+
                 if (
-                    image == null
+                    !IsValidJpeg(
+                        imageBytes
+                    )
                 )
                 {
-                    SetWaitingStatus();
+                    Console.WriteLine(
+                        $"⚠️ Frame inválido recibido de {_machineId}"
+                    );
 
                     continue;
                 }
 
-                // ------------------------------------------
-                // ACTUALIZAR IMAGEN
-                // ------------------------------------------
+                await Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        try
+                        {
+                            SetImageSource(
+                                imageBytes
+                            );
 
-                try
-                {
-                    SetImageSource(
-                        image
-                    );
+                            StatusText.Text =
+                                $"● {_machineId}  •  EN VIVO  •  {DateTime.Now:HH:mm:ss}";
 
-                    StatusText.Text =
-                        $"● {_machineId}  •  Actualizada {DateTime.Now:HH:mm:ss}";
-                }
-                catch (Exception ex)
-                {
-                    StatusText.Text =
-                        $"● {_machineId}  •  Error de imagen";
-
-                    Console.WriteLine(
-                        $"Error procesando captura de {_machineId}: {ex.Message}"
-                    );
-                }
+                            StatusText.Foreground =
+                                new SolidColorBrush(
+                                    Color.FromRgb(
+                                        50,
+                                        213,
+                                        131
+                                    )
+                                );
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(
+                                $"❌ Error mostrando frame: " +
+                                $"{ex.Message}"
+                            );
+                        }
+                    }
+                );
             }
             catch (
                 OperationCanceledException
             )
             {
-                break;
+                return;
             }
-            catch (Exception ex)
+            catch (
+                WebSocketException ex
+            )
             {
-                StatusText.Text =
-                    $"● {_machineId}  •  Error: {ex.Message}";
-
                 Console.WriteLine(
-                    $"Error actualizando pantalla de {_machineId}: {ex.Message}"
+                    $"⚠️ WebSocket de {_machineId}: " +
+                    $"{ex.Message}"
                 );
+
+                return;
             }
         }
     }
 
-    // ==========================================
-    // ESPERAR IMAGEN
-    // ==========================================
+    // =========================================================
+    // DETENER TRANSMISIÓN
+    // =========================================================
 
-    private async Task<byte[]?> WaitForImageAsync(
-        CancellationToken cancellationToken)
+    private async Task StopAsync()
     {
-        for (
-            int attempt = 0;
-            attempt < 10;
-            attempt++
-        )
+        if (_closing)
+            return;
+
+        _closing =
+            true;
+
+        try
         {
-            await Task.Delay(
-                100,
-                cancellationToken
-            );
+            _cancellation?.Cancel();
 
-            try
-            {
-                byte[] image =
-                    await _api.GetScreenAsync(
-                        _machineId,
-                        cancellationToken
-                    );
-
-                if (
-                    IsValidJpeg(
-                        image
-                    )
+            if (
+                _socket != null &&
+                (
+                    _socket.State ==
+                    WebSocketState.Open ||
+                    _socket.State ==
+                    WebSocketState.CloseReceived
                 )
+            )
+            {
+                try
                 {
-                    return image;
+                    await _socket.CloseAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        "Visor cerrado",
+                        CancellationToken.None
+                    );
+                }
+                catch
+                {
                 }
             }
-            catch
-            {
-                // La captura todavía no está disponible.
-            }
+
+            _socket?.Dispose();
         }
+        catch
+        {
+        }
+        finally
+        {
+            _socket = null;
 
-        return null;
-    }
+            _cancellation?.Dispose();
 
-    // ==========================================
-    // ESTADOS
-    // ==========================================
+            _cancellation = null;
 
-    private void SetOfflineStatus()
-    {
-        StatusText.Text =
-            $"● {_machineId}  •  Sin conexión";
-
-        StatusText.Foreground =
-            new SolidColorBrush(
-                Color.FromRgb(
-                    249,
-                    112,
-                    102
-                )
+            Console.WriteLine(
+                $"🔴 Transmisión detenida: {_machineId}"
             );
+        }
     }
 
-    private void SetWaitingStatus()
-    {
-        StatusText.Text =
-            $"● {_machineId}  •  Esperando captura";
-
-        StatusText.Foreground =
-            new SolidColorBrush(
-                Color.FromRgb(
-                    255,
-                    184,
-                    77
-                )
-            );
-    }
-
-    // ==========================================
+    // =========================================================
     // VALIDAR JPEG
-    // ==========================================
+    // =========================================================
 
     private static bool IsValidJpeg(
         byte[]? imageBytes)
@@ -277,9 +371,9 @@ public partial class RemoteScreenWindow : Window
             imageBytes[2] == 0xFF;
     }
 
-    // ==========================================
-    // CONVERTIR JPEG A IMAGEN WPF
-    // ==========================================
+    // =========================================================
+    // MOSTRAR JPEG
+    // =========================================================
 
     private void SetImageSource(
         byte[] imageBytes)
@@ -291,7 +385,7 @@ public partial class RemoteScreenWindow : Window
         )
         {
             throw new InvalidOperationException(
-                "Los datos recibidos no corresponden a una imagen JPEG válida."
+                "Los datos recibidos no corresponden a un JPEG válido."
             );
         }
 
@@ -304,9 +398,7 @@ public partial class RemoteScreenWindow : Window
         var decoder =
             BitmapDecoder.Create(
                 stream,
-
                 BitmapCreateOptions.PreservePixelFormat,
-
                 BitmapCacheOption.OnLoad
             );
 
@@ -315,16 +407,13 @@ public partial class RemoteScreenWindow : Window
         )
         {
             throw new InvalidOperationException(
-                "No se pudo decodificar la imagen recibida."
+                "No se pudo decodificar el frame."
             );
         }
 
-        var frame =
-            decoder.Frames[0];
-
         var bitmap =
             new WriteableBitmap(
-                frame
+                decoder.Frames[0]
             );
 
         bitmap.Freeze();

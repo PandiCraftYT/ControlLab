@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using ControlLab.Manager.Models;
+
 namespace ControlLab.Manager.Services;
 
 public class ControlLabApi
@@ -72,28 +73,43 @@ public class ControlLabApi
             cancellationToken
         );
     }
+
+    // ==========================================
+    // AUTORIZAR EQUIPO
+    // ==========================================
+
     public async Task<bool> AuthorizeAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
-        using var response = await _httpClient.PostAsync(
-            $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/authorize",
-            null,
-            cancellationToken
-        );
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/authorize",
+                null,
+                cancellationToken
+            );
 
         return response.IsSuccessStatusCode;
     }
+
+    // ==========================================
+    // REVOCAR AUTORIZACIÓN
+    // ==========================================
 
     public async Task<bool> RevokeAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
-        using var response = await _httpClient.PostAsync(
-            $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/revoke",
-            null,
-            cancellationToken
-        );
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/revoke",
+                null,
+                cancellationToken
+            );
 
         return response.IsSuccessStatusCode;
     }
@@ -124,13 +140,16 @@ public class ControlLabApi
 
         using var response =
             await _httpClient.PostAsync(
-                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/rename",
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/rename",
                 content,
                 cancellationToken
             );
 
         return response.IsSuccessStatusCode;
     }
+
     // ==========================================
     // BLOQUEAR SESIÓN
     // ==========================================
@@ -141,58 +160,116 @@ public class ControlLabApi
     {
         using var response =
             await _httpClient.PostAsync(
-                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/lock",
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/lock",
                 null,
                 cancellationToken
             );
 
         return response.IsSuccessStatusCode;
     }
+
     // ==========================================
-    // preview
+    // PREVIEW
     // ==========================================
+
     public async Task<bool> RequestPreviewAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
         using var response =
             await _httpClient.PostAsync(
-                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/preview",
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/preview",
                 null,
-                cancellationToken);
+                cancellationToken
+            );
 
         return response.IsSuccessStatusCode;
     }
+
     // ==========================================
-    // REINICIAR SESION
+    // INICIAR STREAM DE PANTALLA
     // ==========================================
+
+    public async Task<bool> StartScreenStreamAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/stream?mode=start",
+                null,
+                cancellationToken
+            );
+
+        return response.IsSuccessStatusCode;
+    }
+
+    // ==========================================
+    // DETENER STREAM DE PANTALLA
+    // ==========================================
+
+    public async Task<bool> StopScreenStreamAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/stream?mode=stop",
+                null,
+                cancellationToken
+            );
+
+        return response.IsSuccessStatusCode;
+    }
+
+    // ==========================================
+    // REINICIAR PC
+    // ==========================================
+
     public async Task<bool> RestartAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
         using var response =
             await _httpClient.PostAsync(
-                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/restart",
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/restart",
                 null,
-                cancellationToken);
+                cancellationToken
+            );
 
         return response.IsSuccessStatusCode;
     }
+
     // ==========================================
-    // APAGAR SESION
+    // APAGAR PC
     // ==========================================
+
     public async Task<bool> ShutdownAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
         using var response =
             await _httpClient.PostAsync(
-                $"{ServerUrl}/api/agents/{Uri.EscapeDataString(machineId)}/shutdown",
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/shutdown",
                 null,
-                cancellationToken);
+                cancellationToken
+            );
 
         return response.IsSuccessStatusCode;
     }
+
     // ==========================================
     // CERRAR
     // ==========================================

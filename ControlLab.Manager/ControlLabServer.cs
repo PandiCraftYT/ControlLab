@@ -17,10 +17,12 @@ public sealed class ControlLabServer
     private readonly ControlLab.Manager.Data.ControlLabDatabase _database = new();
     private readonly ConcurrentDictionary<string, ScreenCaptureData> _screens = new();
     private readonly ConcurrentDictionary<string, ScreenCaptureData> _previews = new();
+    private readonly ConcurrentDictionary<string, ScreenCaptureData> _streamFrames = new();
     private readonly HttpListener _listener = new();
 
     private readonly WebSocketHandler _webSocket;
     private readonly HttpApiHandler _http;
+    private readonly ScreenStreamHandler _screenStream;
 
     private CancellationTokenSource? _cancellation;
     private readonly string _authToken;
@@ -76,15 +78,7 @@ public sealed class ControlLabServer
     );
 
         _http = new HttpApiHandler(
-        // ==========================================
-        // OBTENER AGENTES
-        // ==========================================
-
         () => _agents.Values,
-
-        // ==========================================
-        // OBTENER CAPTURA COMPLETA
-        // ==========================================
 
         machineId =>
             _screens.TryGetValue(
@@ -94,10 +88,6 @@ public sealed class ControlLabServer
                 ? screen
                 : null,
 
-        // ==========================================
-        // OBTENER PREVIEW
-        // ==========================================
-
         machineId =>
             _previews.TryGetValue(
                 machineId,
@@ -106,17 +96,37 @@ public sealed class ControlLabServer
                 ? preview
                 : null,
 
-        // ==========================================
-        // ENVIAR COMANDO
-        // ==========================================
+        machineId =>
+            _webSocket.GetStreamFrame(
+                machineId
+            ),
 
         SendCommandAsync,
-
-        // ==========================================
-        // BASE DE DATOS
-        // ==========================================
-
         _database
+    );
+
+    _screenStream =
+    new ScreenStreamHandler(
+        machineId =>
+            _webSocket.GetStreamFrame(
+                machineId
+            ),
+
+        machineId =>
+            _database.IsAgentAuthorized(
+                machineId
+            ),
+
+        machineId =>
+            _agents.Values.Any(
+                agent =>
+                    agent.MachineId.Equals(
+                        machineId,
+                        StringComparison.OrdinalIgnoreCase
+                    ) &&
+                    agent.Socket.State ==
+                        System.Net.WebSockets.WebSocketState.Open
+            )
     );
     }
 
@@ -184,10 +194,40 @@ public sealed class ControlLabServer
         try
         {
             if (context.Request.IsWebSocketRequest)
+        {
+            string path =
+                context.Request.Url?.AbsolutePath
+                ?? "";
+
+            const string prefix =
+                "/ws/screen/";
+
+            if (
+                path.StartsWith(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
             {
-                await _webSocket.HandleAsync(context);
+                string machineId =
+                    Uri.UnescapeDataString(
+                        path[prefix.Length..]
+                    );
+
+                await _screenStream.HandleAsync(
+                    context,
+                    machineId
+                );
+
                 return;
             }
+
+            await _webSocket.HandleAsync(
+                context
+            );
+
+            return;
+        }
 
             await _http.HandleAsync(context);
         }

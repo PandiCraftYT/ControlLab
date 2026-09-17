@@ -12,12 +12,14 @@ public sealed class HttpApiHandler
     private readonly ControlLabDatabase _database;
     private readonly Func<string, ScreenCaptureData?> _getScreen;
     private readonly Func<string, ScreenCaptureData?> _getPreview;
+    private readonly Func<string, ScreenCaptureData?> _getStreamFrame;
     private readonly Func<HttpListenerContext, string, string, Task> _sendCommand;
 
     public HttpApiHandler(
         Func<IEnumerable<AgentConnection>> getAgents,
         Func<string, ScreenCaptureData?> getScreen,
         Func<string, ScreenCaptureData?> getPreview,
+        Func<string, ScreenCaptureData?> getStreamFrame,
         Func<HttpListenerContext, string, string, Task> sendCommand,
         ControlLabDatabase database)
     {
@@ -26,6 +28,7 @@ public sealed class HttpApiHandler
         _getPreview = getPreview;
         _sendCommand = sendCommand;
         _database = database;
+        _getStreamFrame = getStreamFrame;
     }
 
     public async Task HandleAsync(HttpListenerContext context)
@@ -508,7 +511,127 @@ public sealed class HttpApiHandler
 
                 return;
             }
+            // ==========================================
+            // INICIAR TRANSMISIÓN DE PANTALLA
+            // ==========================================
 
+            if (
+                method == "POST" &&
+                action == "stream"
+            )
+            {
+                string? mode =
+                    context.Request.QueryString["mode"];
+
+                if (
+                    string.Equals(
+                        mode,
+                        "start",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                {
+                    var registeredAgent =
+                        _database.GetAgents()
+                            .FirstOrDefault(
+                                agent =>
+                                    agent.MachineId.Equals(
+                                        machineId,
+                                        StringComparison.OrdinalIgnoreCase
+                                    )
+                            );
+
+                    if (registeredAgent == null)
+                    {
+                        await SendErrorAsync(
+                            context,
+                            404,
+                            "Equipo no encontrado."
+                        );
+
+                        return;
+                    }
+
+                    if (!registeredAgent.Authorized)
+                    {
+                        await SendErrorAsync(
+                            context,
+                            403,
+                            "El equipo no está autorizado."
+                        );
+
+                        return;
+                    }
+
+                    bool online =
+                        _getAgents()
+                            .Any(
+                                agent =>
+                                    agent.MachineId.Equals(
+                                        machineId,
+                                        StringComparison.OrdinalIgnoreCase
+                                    ) &&
+                                    agent.Socket.State ==
+                                        WebSocketState.Open
+                            );
+
+                    if (!online)
+                    {
+                        await SendErrorAsync(
+                            context,
+                            409,
+                            "El equipo no está conectado."
+                        );
+
+                        return;
+                    }
+
+                    await _sendCommand(
+                        context,
+                        machineId,
+                        "START_SCREEN_STREAM"
+                    );
+
+                    return;
+                }
+
+                // ==========================================
+                // DETENER TRANSMISIÓN
+                // ==========================================
+
+                if (
+                    string.Equals(
+                        mode,
+                        "stop",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                {
+                    await _sendCommand(
+                        context,
+                        machineId,
+                        "STOP_SCREEN_STREAM"
+                    );
+
+                    return;
+                }
+            }
+            // ==========================================
+            // OBTENER FRAME DE TRANSMISIÓN
+            // ==========================================
+
+            if (
+                method == "GET" &&
+                action == "stream"
+            )
+            {
+                await SendStreamFrameAsync(
+                    context,
+                    machineId
+                );
+
+                return;
+            }
             // ==========================================
             // OBTENER CAPTURA
             // ==========================================
@@ -880,6 +1003,70 @@ public sealed class HttpApiHandler
             .WriteAsync(imageBytes);
 
         context.Response.Close();
+    }
+    // ==========================================
+    // ENVIAR FRAME DE TRANSMISIÓN
+    // ==========================================
+
+    private async Task SendStreamFrameAsync(
+        HttpListenerContext context,
+        string machineId)
+    {
+        var frame =
+            _getStreamFrame(
+                machineId
+            );
+
+        if (frame == null)
+        {
+            await SendErrorAsync(
+                context,
+                404,
+                "Frame de transmisión no disponible."
+            );
+
+            return;
+        }
+
+        try
+        {
+            byte[] imageBytes =
+                Convert.FromBase64String(
+                    frame.Image
+                );
+
+            context.Response.StatusCode = 200;
+
+            context.Response.ContentType =
+                "image/jpeg";
+
+            context.Response.ContentLength64 =
+                imageBytes.Length;
+
+            context.Response.Headers[
+                "Cache-Control"
+            ] =
+                "no-store, no-cache, must-revalidate";
+
+            context.Response.Headers[
+                "Pragma"
+            ] =
+                "no-cache";
+
+            await context.Response.OutputStream.WriteAsync(
+                imageBytes
+            );
+
+            context.Response.OutputStream.Close();
+        }
+        catch (FormatException)
+        {
+            await SendErrorAsync(
+                context,
+                500,
+                "El frame recibido no es un JPEG válido."
+            );
+        }
     }
     // ==========================================
     // OBTENER PREVIEW

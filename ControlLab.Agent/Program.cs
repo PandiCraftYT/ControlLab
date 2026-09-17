@@ -352,6 +352,106 @@ static async Task<string> GetAuthTokenAsync(
     }
 }
 // ==========================================
+// TRANSMISIÓN DE PANTALLA
+// ==========================================
+
+static async Task StartScreenStreamAsync(
+    ClientWebSocket socket,
+    string machineId,
+    CancellationToken cancellationToken)
+{
+    Console.WriteLine(
+        $"📡 Iniciando transmisión para {machineId}"
+    );
+
+    try
+    {
+        while (
+            !cancellationToken.IsCancellationRequested &&
+            socket.State == WebSocketState.Open
+        )
+        {
+            try
+            {
+                // ------------------------------------------
+                // CAPTURAR PANTALLA
+                // ------------------------------------------
+
+                byte[] imageBytes =
+                    ScreenCapture.CaptureStreamFrame();
+
+                string base64Image =
+                    Convert.ToBase64String(
+                        imageBytes
+                    );
+
+                // ------------------------------------------
+                // ENVIAR FRAME
+                // ------------------------------------------
+
+                var frame = new
+                {
+                    type =
+                        "SCREEN_STREAM_FRAME",
+
+                    machineId =
+                        machineId,
+
+                    image =
+                        base64Image,
+
+                    timestamp =
+                        DateTime.UtcNow.ToString("O")
+                };
+
+                await SendMessageAsync(
+                    socket,
+                    frame
+                );
+
+                // ------------------------------------------
+                // 10 FPS APROX.
+                // ------------------------------------------
+
+                await Task.Delay(
+                    100,
+                    cancellationToken
+                );
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"❌ Error en frame de transmisión: " +
+                    $"{ex.Message}"
+                );
+
+                await Task.Delay(
+                    250,
+                    cancellationToken
+                );
+            }
+        }
+    }
+    catch (OperationCanceledException)
+    {
+        // Transmisión detenida.
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(
+            $"❌ Error en transmisión: {ex.Message}"
+        );
+    }
+
+    Console.WriteLine(
+        $"🔴 Transmisión finalizada para {machineId}"
+    );
+}
+// ==========================================
 // ENVIAR MENSAJE
 // ==========================================
 
@@ -430,6 +530,9 @@ static async Task ReceiveMessagesAsync(
     ClientWebSocket socket)
 {
     byte[] buffer = new byte[4096];
+
+    CancellationTokenSource? screenStreamCancellation = null;
+    Task? screenStreamTask = null;
 
     while (
         socket.State ==
@@ -608,6 +711,68 @@ static async Task ReceiveMessagesAsync(
                                 $"❌ Error capturando pantalla: {ex.Message}"
                             );
                         }
+                    }
+
+                    // ==========================================
+                    // INICIAR TRANSMISIÓN DE PANTALLA
+                    // ==========================================
+
+                    else if (
+                        command.Command ==
+                        "START_SCREEN_STREAM"
+                    )
+                    {
+                        Console.WriteLine(
+                            "📡 Comando START_SCREEN_STREAM recibido"
+                        );
+
+                        // Si ya existe una transmisión,
+                        // primero la detenemos.
+                        screenStreamCancellation?.Cancel();
+
+                        screenStreamCancellation =
+                            new CancellationTokenSource();
+
+                        CancellationToken streamToken =
+                            screenStreamCancellation.Token;
+
+                        screenStreamTask =
+                            Task.Run(
+                                () =>
+                                    StartScreenStreamAsync(
+                                        socket,
+                                        command.MachineId,
+                                        streamToken
+                                    ),
+                                streamToken
+                            );
+
+                        Console.WriteLine(
+                            "🟢 Transmisión de pantalla iniciada"
+                        );
+                    }
+
+                    // ==========================================
+                    // DETENER TRANSMISIÓN DE PANTALLA
+                    // ==========================================
+
+                    else if (
+                        command.Command ==
+                        "STOP_SCREEN_STREAM"
+                    )
+                    {
+                        Console.WriteLine(
+                            "🛑 Comando STOP_SCREEN_STREAM recibido"
+                        );
+
+                        screenStreamCancellation?.Cancel();
+
+                        screenStreamCancellation = null;
+                        screenStreamTask = null;
+
+                        Console.WriteLine(
+                            "🔴 Transmisión de pantalla detenida"
+                        );
                     }
                     else if (
                         command.Command ==
