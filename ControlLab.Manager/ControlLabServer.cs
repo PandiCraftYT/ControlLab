@@ -27,6 +27,14 @@ public sealed class ControlLabServer
     private CancellationTokenSource? _cancellation;
     private readonly string _authToken;
 
+    // =========================================================
+    // COLA DE ENVÍO WEBSOCKET
+    // =========================================================
+    // WebSocket no permite múltiples SendAsync simultáneos.
+    // Todas las órdenes del Manager pasan por este semáforo.
+    private readonly SemaphoreSlim _webSocketSendLock =
+        new(1, 1);
+
     public ControlLabServer()
     {
         _authToken =
@@ -77,8 +85,8 @@ public sealed class ControlLabServer
             )
     );
 
-        _http = new HttpApiHandler(
-        () => _agents.Values,
+    _http = new HttpApiHandler(
+            () => _agents.Values,
 
         machineId =>
             _screens.TryGetValue(
@@ -102,6 +110,9 @@ public sealed class ControlLabServer
             ),
 
         SendCommandAsync,
+
+        SendRemoteInputAsync,
+
         _database
     );
 
@@ -341,8 +352,259 @@ public sealed class ControlLabServer
             }
         );
     }
+    // ==========================================
+    // ENVIAR CONTROL REMOTO
+    // ==========================================
 
-    private static async Task SendWebSocketJsonAsync(
+    private async Task SendRemoteInputAsync(
+        HttpListenerContext context,
+        string machineId,
+        string action,
+        double x,
+        double y,
+        string? button,
+        int delta,
+        string? key)
+    {
+        // ==========================================
+        // COMPROBAR QUE EL EQUIPO EXISTE
+        // ==========================================
+
+        var registeredAgent =
+            _database.GetAgents()
+                .FirstOrDefault(
+                    agent =>
+                        agent.MachineId.Equals(
+                            machineId,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                );
+
+        if (registeredAgent == null)
+        {
+            await SendJsonAsync(
+                context,
+                new
+                {
+                    success = false,
+                    message =
+                        "Equipo no encontrado."
+                },
+                404
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // COMPROBAR AUTORIZACIÓN
+        // ==========================================
+
+        if (!registeredAgent.Authorized)
+        {
+            await SendJsonAsync(
+                context,
+                new
+                {
+                    success = false,
+                    message =
+                        "El equipo no está autorizado."
+                },
+                403
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // COMPROBAR CONEXIÓN
+        // ==========================================
+
+        if (
+            !_agents.TryGetValue(
+                machineId,
+                out var agent
+            )
+        )
+        {
+            await SendJsonAsync(
+                context,
+                new
+                {
+                    success = false,
+                    message =
+                        "El equipo no está conectado."
+                },
+                409
+            );
+
+            return;
+        }
+
+        if (
+            agent.Socket.State !=
+            WebSocketState.Open
+        )
+        {
+            await SendJsonAsync(
+                context,
+                new
+                {
+                    success = false,
+                    message =
+                        "El equipo no está conectado."
+                },
+                409
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // VALIDAR ACCIÓN
+        // ==========================================
+
+        string[] allowedActions =
+        {
+            "MOUSE_MOVE",
+            "MOUSE_DOWN",
+            "MOUSE_UP",
+            "MOUSE_CLICK",
+            "MOUSE_DOUBLE_CLICK",
+            "MOUSE_WHEEL",
+            "KEY_DOWN",
+            "KEY_UP"
+        };
+
+        if (
+            !allowedActions.Contains(
+                action,
+                StringComparer.OrdinalIgnoreCase
+            )
+        )
+        {
+            await SendJsonAsync(
+                context,
+                new
+                {
+                    success = false,
+                    message =
+                        "Acción de control remoto no válida."
+                },
+                400
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // VALIDAR COORDENADAS
+        // ==========================================
+
+        if (
+            action.StartsWith(
+                "MOUSE_",
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+        {
+            if (
+                double.IsNaN(x) ||
+                double.IsInfinity(x) ||
+                double.IsNaN(y) ||
+                double.IsInfinity(y)
+            )
+            {
+                await SendJsonAsync(
+                    context,
+                    new
+                    {
+                        success = false,
+                        message =
+                            "Las coordenadas no son válidas."
+                    },
+                    400
+                );
+
+                return;
+            }
+
+            if (
+                x < 0 ||
+                y < 0
+            )
+            {
+                await SendJsonAsync(
+                    context,
+                    new
+                    {
+                        success = false,
+                        message =
+                            "Las coordenadas no pueden ser negativas."
+                    },
+                    400
+                );
+
+                return;
+            }
+        }
+
+        // ==========================================
+        // CREAR EVENTO
+        // ==========================================
+
+        var remoteInput = new
+        {
+            type = "REMOTE_INPUT",
+
+            machineId,
+
+            action,
+
+            x,
+
+            y,
+
+            button,
+
+            delta,
+
+            key,
+
+            timestamp =
+                DateTime.UtcNow.ToString("O")
+        };
+
+        // ==========================================
+        // ENVIAR AL AGENT
+        // ==========================================
+
+        await SendWebSocketJsonAsync(
+            agent.Socket,
+            remoteInput
+        );
+
+        Console.WriteLine(
+            $"🖱️ CONTROL REMOTO: " +
+            $"{action} → {machineId}"
+        );
+
+        // ==========================================
+        // RESPUESTA
+        // ==========================================
+
+        await SendJsonAsync(
+            context,
+            new
+            {
+                success = true,
+                machineId,
+                action
+            }
+        );
+    }
+
+    private async Task SendWebSocketJsonAsync(
         WebSocket socket,
         object data)
     {
@@ -351,17 +613,34 @@ public sealed class ControlLabServer
                 System.Text.Json.JsonSerializer.Serialize(data)
             );
 
-        await socket.SendAsync(
-            new ArraySegment<byte>(bytes),
-            WebSocketMessageType.Text,
-            true,
-            CancellationToken.None
-        );
+        await _webSocketSendLock.WaitAsync();
+
+        try
+        {
+            if (socket.State != WebSocketState.Open)
+            {
+                throw new WebSocketException(
+                    "El WebSocket del Agent no está abierto."
+                );
+            }
+
+            await socket.SendAsync(
+                new ArraySegment<byte>(bytes),
+                WebSocketMessageType.Text,
+                true,
+                CancellationToken.None
+            );
+        }
+        finally
+        {
+            _webSocketSendLock.Release();
+        }
     }
 
     private static async Task SendJsonAsync(
         HttpListenerContext context,
-        object data)
+        object data,
+        int statusCode = 200)
     {
         string json =
             System.Text.Json.JsonSerializer.Serialize(
@@ -375,9 +654,11 @@ public sealed class ControlLabServer
         byte[] bytes =
             Encoding.UTF8.GetBytes(json);
 
-        context.Response.StatusCode = 200;
+        context.Response.StatusCode = statusCode;
+
         context.Response.ContentType =
             "application/json; charset=utf-8";
+
         context.Response.ContentLength64 =
             bytes.Length;
 
@@ -632,5 +913,13 @@ private static string LoadAuthToken()
 
         _agents.DisposeConnections();
         _screens.Clear();
+
+        try
+        {
+            _webSocketSendLock.Dispose();
+        }
+        catch
+        {
+        }
     }
 }

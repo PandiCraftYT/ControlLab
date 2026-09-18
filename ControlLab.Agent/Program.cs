@@ -3,7 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Runtime.InteropServices;
-
+using System.Windows.Forms;
 const string AGENT_VERSION = "1.0.0";
 
 string configPath = Path.Combine(
@@ -865,15 +865,17 @@ static async Task ReceiveMessagesAsync(
                     );
 
                 if (
-                    command?.Type == "COMMAND" &&
+                    command != null &&
                     command.MachineId.Equals(
                         GetMachineId(),
                         StringComparison.OrdinalIgnoreCase
                     )
                 )
                 {
-                    // ==========================================
-                    // PING
+                    if (command.Type == "COMMAND")
+                    {
+                        // ==========================================
+                        // PING
                     // ==========================================
 
                     if (
@@ -1182,7 +1184,6 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
-
                     // ==========================================
                     // BLOQUEAR SESIÓN
                     // ==========================================
@@ -1466,6 +1467,28 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
+
+                    }
+
+                    // ==========================================
+                    // CONTROL REMOTO
+                    // ==========================================
+
+                    else if (
+                        command.Type == "REMOTE_INPUT"
+                    )
+                    {
+                        try
+                        {
+                            await ProcessRemoteInputAsync(command);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(
+                                $"❌ Error en control remoto: {ex.Message}"
+                            );
+                        }
+                    }
                 }
             }
             catch (JsonException)
@@ -1513,7 +1536,108 @@ static async Task ReceiveMessagesAsync(
         _ = screenStreamTask;
     }
 }
+// =========================================================
+// PROCESAR CONTROL REMOTO
+// =========================================================
 
+static Task ProcessRemoteInputAsync(
+    ServerCommand command)
+{
+    string action =
+        command.Action?.Trim().ToUpperInvariant() ?? "";
+
+    switch (action)
+    {
+        // ==========================================
+        // MOUSE MOVE
+        // ==========================================
+
+        case "MOUSE_MOVE":
+            WindowsNativeMethods.MoveMouse(
+                command.X,
+                command.Y
+            );
+            break;
+
+        // ==========================================
+        // MOUSE DOWN
+        // ==========================================
+
+        case "MOUSE_DOWN":
+            WindowsNativeMethods.MouseDown(
+                command.Button
+            );
+            break;
+
+        // ==========================================
+        // MOUSE UP
+        // ==========================================
+
+        case "MOUSE_UP":
+            WindowsNativeMethods.MouseUp(
+                command.Button
+            );
+            break;
+
+        // ==========================================
+        // CLICK
+        // ==========================================
+
+        case "MOUSE_CLICK":
+            WindowsNativeMethods.MouseClick(
+                command.Button
+            );
+            break;
+
+        // ==========================================
+        // DOBLE CLICK
+        // ==========================================
+
+        case "MOUSE_DOUBLE_CLICK":
+            WindowsNativeMethods.MouseDoubleClick(
+                command.Button
+            );
+            break;
+
+        // ==========================================
+        // RUEDA
+        // ==========================================
+
+        case "MOUSE_WHEEL":
+            WindowsNativeMethods.MouseWheel(
+                command.Delta
+            );
+            break;
+
+        // ==========================================
+        // TECLA DOWN
+        // ==========================================
+
+        case "KEY_DOWN":
+            WindowsNativeMethods.KeyDown(
+                command.Key
+            );
+            break;
+
+        // ==========================================
+        // TECLA UP
+        // ==========================================
+
+        case "KEY_UP":
+            WindowsNativeMethods.KeyUp(
+                command.Key
+            );
+            break;
+
+        default:
+            Console.WriteLine(
+                $"⚠️ Acción REMOTE_INPUT desconocida: {action}"
+            );
+            break;
+    }
+
+    return Task.CompletedTask;
+}
 // =========================================================
 // PREVIEW AUTOMÁTICA DE PANTALLA
 // =========================================================
@@ -1687,10 +1811,24 @@ public class AgentConfig
 public class ServerCommand
 {
     public string Type { get; set; } = "";
-
     public string Command { get; set; } = "";
-
     public string MachineId { get; set; } = "";
+
+    // ==========================================
+    // CONTROL REMOTO
+    // ==========================================
+
+    public string Action { get; set; } = "";
+
+    public double X { get; set; }
+
+    public double Y { get; set; }
+
+    public string? Button { get; set; }
+
+    public int Delta { get; set; }
+
+    public string? Key { get; set; }
 }
 
 // =========================================================
@@ -1707,12 +1845,440 @@ public static class SendLockHolder
 // FUNCIONES NATIVAS DE WINDOWS
 // =========================================================
 
+// =========================================================
+// FUNCIONES NATIVAS DE WINDOWS
+// =========================================================
+
 public static class WindowsNativeMethods
 {
+    private const uint INPUT_MOUSE = 0;
+    private const uint INPUT_KEYBOARD = 1;
+
+    private const uint MOUSEEVENTF_MOVE = 0x0001;
+    private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+    private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+    private const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+    private const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+    private const uint MOUSEEVENTF_WHEEL = 0x0800;
+    private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_UNICODE = 0x0004;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT
+    {
+        public uint type;
+        public InputUnion U;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)]
+        public MOUSEINPUT mi;
+
+        [FieldOffset(0)]
+        public KEYBDINPUT ki;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [DllImport(
+        "user32.dll",
+        SetLastError = true
+    )]
+    private static extern uint SendInput(
+        uint nInputs,
+        INPUT[] pInputs,
+        int cbSize
+    );
+
     [DllImport(
         "user32.dll",
         SetLastError = true
     )]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool LockWorkStation();
+
+    // =====================================================
+    // MOUSE
+    // =====================================================
+
+    public static void MoveMouse(
+        double x,
+        double y)
+    {
+        int screenWidth =
+            GetSystemMetrics(0);
+
+        int screenHeight =
+            GetSystemMetrics(1);
+
+        if (screenWidth <= 1 || screenHeight <= 1)
+            return;
+
+        int pixelX =
+            Math.Clamp(
+                (int)Math.Round(x),
+                0,
+                screenWidth - 1
+            );
+
+        int pixelY =
+            Math.Clamp(
+                (int)Math.Round(y),
+                0,
+                screenHeight - 1
+            );
+
+        int absoluteX =
+            (int)Math.Round(
+                pixelX * 65535.0 /
+                (screenWidth - 1)
+            );
+
+        int absoluteY =
+            (int)Math.Round(
+                pixelY * 65535.0 /
+                (screenHeight - 1)
+            );
+
+        SendMouse(
+            absoluteX,
+            absoluteY,
+            MOUSEEVENTF_MOVE |
+            MOUSEEVENTF_ABSOLUTE
+        );
+    }
+
+    public static void MouseDown(
+        string? button)
+    {
+        SendMouseButton(
+            button,
+            true
+        );
+    }
+
+    public static void MouseUp(
+        string? button)
+    {
+        SendMouseButton(
+            button,
+            false
+        );
+    }
+
+    public static void MouseClick(
+        string? button)
+    {
+        SendMouseButton(
+            button,
+            true
+        );
+
+        SendMouseButton(
+            button,
+            false
+        );
+    }
+
+    public static void MouseDoubleClick(
+        string? button)
+    {
+        MouseClick(button);
+
+        Thread.Sleep(50);
+
+        MouseClick(button);
+    }
+
+    public static void MouseWheel(
+        int delta)
+    {
+        if (delta == 0)
+            return;
+
+        SendMouse(
+            0,
+            0,
+            MOUSEEVENTF_WHEEL,
+            unchecked((uint)delta)
+        );
+    }
+
+    private static void SendMouseButton(
+        string? button,
+        bool down)
+    {
+        string normalized =
+            button?.Trim().ToUpperInvariant()
+            ?? "LEFT";
+
+        uint flags;
+
+        switch (normalized)
+        {
+            case "RIGHT":
+                flags =
+                    down
+                        ? MOUSEEVENTF_RIGHTDOWN
+                        : MOUSEEVENTF_RIGHTUP;
+                break;
+
+            case "MIDDLE":
+                flags =
+                    down
+                        ? MOUSEEVENTF_MIDDLEDOWN
+                        : MOUSEEVENTF_MIDDLEUP;
+                break;
+
+            case "LEFT":
+                flags =
+                    down
+                        ? MOUSEEVENTF_LEFTDOWN
+                        : MOUSEEVENTF_LEFTUP;
+                break;
+
+            default:
+                return;
+        }
+
+        SendMouse(
+            0,
+            0,
+            flags
+        );
+    }
+
+    private static void SendMouse(
+        int dx,
+        int dy,
+        uint flags,
+        uint mouseData = 0)
+    {
+        INPUT[] inputs =
+        {
+            new INPUT
+            {
+                type = INPUT_MOUSE,
+                U = new InputUnion
+                {
+                    mi = new MOUSEINPUT
+                    {
+                        dx = dx,
+                        dy = dy,
+                        mouseData = mouseData,
+                        dwFlags = flags,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            }
+        };
+
+        SendInput(
+            1,
+            inputs,
+            Marshal.SizeOf<INPUT>()
+        );
+    }
+
+    // =====================================================
+    // TECLADO
+    // =====================================================
+
+    public static void KeyDown(
+        string? key)
+    {
+        if (!TryGetVirtualKey(
+                key,
+                out ushort virtualKey))
+        {
+            return;
+        }
+
+        SendKeyboard(
+            virtualKey,
+            false
+        );
+    }
+
+    public static void KeyUp(
+        string? key)
+    {
+        if (!TryGetVirtualKey(
+                key,
+                out ushort virtualKey))
+        {
+            return;
+        }
+
+        SendKeyboard(
+            virtualKey,
+            true
+        );
+    }
+
+    private static void SendKeyboard(
+        ushort virtualKey,
+        bool keyUp)
+    {
+        INPUT[] inputs =
+        {
+            new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                U = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = virtualKey,
+                        wScan = 0,
+                        dwFlags =
+                            keyUp
+                                ? KEYEVENTF_KEYUP
+                                : 0,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            }
+        };
+
+        SendInput(
+            1,
+            inputs,
+            Marshal.SizeOf<INPUT>()
+        );
+    }
+
+    // =====================================================
+    // CONVERSIÓN DE TECLAS
+    // =====================================================
+
+    private static bool TryGetVirtualKey(
+        string? key,
+        out ushort virtualKey)
+    {
+        virtualKey = 0;
+
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        string normalized =
+            key.Trim().ToUpperInvariant();
+
+        // Letras
+        if (
+            normalized.Length == 1 &&
+            normalized[0] >= 'A' &&
+            normalized[0] <= 'Z'
+        )
+        {
+            virtualKey =
+                normalized[0];
+
+            return true;
+        }
+
+        // Números
+        if (
+            normalized.Length == 1 &&
+            normalized[0] >= '0' &&
+            normalized[0] <= '9'
+        )
+        {
+            virtualKey =
+                normalized[0];
+
+            return true;
+        }
+
+        // Teclas especiales
+        var keys =
+            new Dictionary<string, ushort>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                ["ENTER"] = 0x0D,
+                ["ESC"] = 0x1B,
+                ["ESCAPE"] = 0x1B,
+                ["TAB"] = 0x09,
+                ["SPACE"] = 0x20,
+                ["BACKSPACE"] = 0x08,
+                ["DELETE"] = 0x2E,
+                ["DEL"] = 0x2E,
+                ["INSERT"] = 0x2D,
+                ["HOME"] = 0x24,
+                ["END"] = 0x23,
+                ["PAGEUP"] = 0x21,
+                ["PAGEDOWN"] = 0x22,
+
+                ["LEFT"] = 0x25,
+                ["UP"] = 0x26,
+                ["RIGHT"] = 0x27,
+                ["DOWN"] = 0x28,
+
+                ["SHIFT"] = 0x10,
+                ["CTRL"] = 0x11,
+                ["CONTROL"] = 0x11,
+                ["ALT"] = 0x12,
+                ["WIN"] = 0x5B,
+                ["LWIN"] = 0x5B,
+                ["RWIN"] = 0x5C,
+
+                ["CAPSLOCK"] = 0x14,
+                ["NUMLOCK"] = 0x90,
+                ["SCROLLLOCK"] = 0x91,
+
+                ["F1"] = 0x70,
+                ["F2"] = 0x71,
+                ["F3"] = 0x72,
+                ["F4"] = 0x73,
+                ["F5"] = 0x74,
+                ["F6"] = 0x75,
+                ["F7"] = 0x76,
+                ["F8"] = 0x77,
+                ["F9"] = 0x78,
+                ["F10"] = 0x79,
+                ["F11"] = 0x7A,
+                ["F12"] = 0x7B
+            };
+
+        return keys.TryGetValue(
+            normalized,
+            out virtualKey
+        );
+    }
+
+    // =====================================================
+    // RESOLUCIÓN DE PANTALLA
+    // =====================================================
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(
+        int nIndex
+    );
 }

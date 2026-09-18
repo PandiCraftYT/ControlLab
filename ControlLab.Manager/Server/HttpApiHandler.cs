@@ -14,6 +14,16 @@ public sealed class HttpApiHandler
     private readonly Func<string, ScreenCaptureData?> _getPreview;
     private readonly Func<string, ScreenCaptureData?> _getStreamFrame;
     private readonly Func<HttpListenerContext, string, string, Task> _sendCommand;
+    private readonly Func<
+        HttpListenerContext,
+        string,
+        string,
+        double,
+        double,
+        string?,
+        int,
+        string?,
+        Task> _sendRemoteInput;
 
     public HttpApiHandler(
         Func<IEnumerable<AgentConnection>> getAgents,
@@ -21,12 +31,24 @@ public sealed class HttpApiHandler
         Func<string, ScreenCaptureData?> getPreview,
         Func<string, ScreenCaptureData?> getStreamFrame,
         Func<HttpListenerContext, string, string, Task> sendCommand,
+        Func<
+            HttpListenerContext,
+            string,
+            string,
+            double,
+            double,
+            string?,
+            int,
+            string?,
+            Task> sendRemoteInput,
         ControlLabDatabase database)
     {
         _getAgents = getAgents;
         _getScreen = getScreen;
         _getPreview = getPreview;
         _sendCommand = sendCommand;
+        _sendRemoteInput =
+            sendRemoteInput;
         _database = database;
         _getStreamFrame = getStreamFrame;
     }
@@ -409,6 +431,22 @@ public sealed class HttpApiHandler
             )
             {
                 await RenameAgentAsync(
+                    context,
+                    machineId
+                );
+
+                return;
+            }
+            // ==========================================
+            // CONTROL REMOTO
+            // ==========================================
+
+            if (
+                method == "POST" &&
+                action == "input"
+            )
+            {
+                await HandleRemoteInputAsync(
                     context,
                     machineId
                 );
@@ -1128,6 +1166,213 @@ public sealed class HttpApiHandler
         context.Response.Close();
     }
     // ==========================================
+    // CONTROL REMOTO
+    // ==========================================
+
+    private async Task HandleRemoteInputAsync(
+        HttpListenerContext context,
+        string machineId)
+    {
+        // ==========================================
+        // LIMITAR TAMAÑO
+        // ==========================================
+
+        if (
+            context.Request.ContentLength64 > 4096
+        )
+        {
+            await SendErrorAsync(
+                context,
+                413,
+                "La solicitud es demasiado grande."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // LEER JSON
+        // ==========================================
+
+        RemoteInputRequest? request;
+
+        try
+        {
+            request =
+                await JsonSerializer.DeserializeAsync<RemoteInputRequest>(
+                    context.Request.InputStream,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }
+                );
+        }
+        catch (JsonException)
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "El JSON enviado no es válido."
+            );
+
+            return;
+        }
+
+        if (request == null)
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "No se recibió información de control remoto."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // VALIDAR ACCIÓN
+        // ==========================================
+
+        string action =
+            request.Action?.Trim() ?? "";
+
+        if (string.IsNullOrWhiteSpace(action))
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "La acción es obligatoria."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // NORMALIZAR
+        // ==========================================
+
+        action =
+            action.ToUpperInvariant();
+
+        string[] allowedActions =
+        {
+            "MOUSE_MOVE",
+            "MOUSE_DOWN",
+            "MOUSE_UP",
+            "MOUSE_CLICK",
+            "MOUSE_DOUBLE_CLICK",
+            "MOUSE_WHEEL",
+            "KEY_DOWN",
+            "KEY_UP"
+        };
+
+        if (
+            !allowedActions.Contains(
+                action,
+                StringComparer.OrdinalIgnoreCase
+            )
+        )
+        {
+            await SendErrorAsync(
+                context,
+                400,
+                "La acción de control remoto no es válida."
+            );
+
+            return;
+        }
+
+        // ==========================================
+        // VALIDAR COORDENADAS
+        // ==========================================
+
+        if (
+            action.StartsWith(
+                "MOUSE_",
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+        {
+            if (
+                double.IsNaN(request.X) ||
+                double.IsInfinity(request.X) ||
+                double.IsNaN(request.Y) ||
+                double.IsInfinity(request.Y)
+            )
+            {
+                await SendErrorAsync(
+                    context,
+                    400,
+                    "Las coordenadas no son válidas."
+                );
+
+                return;
+            }
+
+            if (
+                request.X < 0 ||
+                request.Y < 0
+            )
+            {
+                await SendErrorAsync(
+                    context,
+                    400,
+                    "Las coordenadas no pueden ser negativas."
+                );
+
+                return;
+            }
+        }
+
+        // ==========================================
+        // VALIDAR BOTÓN
+        // ==========================================
+
+        if (
+            action == "MOUSE_DOWN" ||
+            action == "MOUSE_UP" ||
+            action == "MOUSE_CLICK" ||
+            action == "MOUSE_DOUBLE_CLICK"
+        )
+        {
+            string button =
+                request.Button?
+                    .Trim()
+                    .ToLowerInvariant()
+                ?? "";
+
+            if (
+                button != "left" &&
+                button != "right" &&
+                button != "middle"
+            )
+            {
+                await SendErrorAsync(
+                    context,
+                    400,
+                    "Botón de mouse no válido."
+                );
+
+                return;
+            }
+        }
+
+        // ==========================================
+        // ENVIAR AL CONTROL SERVER
+        // ==========================================
+
+        await _sendRemoteInput(
+            context,
+            machineId,
+            action,
+            request.X,
+            request.Y,
+            request.Button,
+            request.Delta,
+            request.Key
+        );
+    }
+    // ==========================================
     // RESPUESTA JSON
     // ==========================================
 
@@ -1211,4 +1456,23 @@ public sealed class HttpApiHandler
 public sealed class RenameAgentRequest
 {
     public string? DisplayName { get; set; }
+}
+
+// ==========================================
+// MODELO CONTROL REMOTO
+// ==========================================
+
+public sealed class RemoteInputRequest
+{
+    public string? Action { get; set; }
+
+    public double X { get; set; }
+
+    public double Y { get; set; }
+
+    public string? Button { get; set; }
+
+    public int Delta { get; set; }
+
+    public string? Key { get; set; }
 }

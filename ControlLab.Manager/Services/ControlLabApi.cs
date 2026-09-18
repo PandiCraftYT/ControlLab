@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using ControlLab.Manager.Models;
 
@@ -134,7 +135,7 @@ public class ControlLabApi
         using var content =
             new StringContent(
                 payload,
-                System.Text.Encoding.UTF8,
+                Encoding.UTF8,
                 "application/json"
             );
 
@@ -264,6 +265,52 @@ public class ControlLabApi
                 $"{Uri.EscapeDataString(machineId)}" +
                 "/shutdown",
                 null,
+                cancellationToken
+            );
+
+        return response.IsSuccessStatusCode;
+    }
+
+    // ==========================================
+    // CONTROL REMOTO
+    // ==========================================
+
+    public async Task<bool> SendRemoteInputAsync(
+        string machineId,
+        string action,
+        double x = 0,
+        double y = 0,
+        string? button = null,
+        int delta = 0,
+        string? key = null,
+        CancellationToken cancellationToken = default)
+    {
+        var payload =
+            JsonSerializer.Serialize(
+                new
+                {
+                    action,
+                    x,
+                    y,
+                    button,
+                    delta,
+                    key
+                }
+            );
+
+        using var content =
+            new StringContent(
+                payload,
+                Encoding.UTF8,
+                "application/json"
+            );
+
+        using var response =
+            await _httpClient.PostAsync(
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/input",
+                content,
                 cancellationToken
             );
 
