@@ -1,8 +1,10 @@
+using System;
+using System.IO;
 using System.Net.WebSockets;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.IO;
+
 namespace ControlLab.Manager.Views;
 
 public partial class RemoteScreenWindow : Window
@@ -17,6 +19,18 @@ public partial class RemoteScreenWindow : Window
 
     private bool _closing;
 
+    // ==========================================
+    // ESTADÍSTICAS DEL STREAM
+    // ==========================================
+
+    private int _framesReceived;
+
+    private DateTime _fpsStartTime;
+
+    // ==========================================
+    // CONSTRUCTOR
+    // ==========================================
+
     public RemoteScreenWindow(
         string machineId,
         byte[] initialImage,
@@ -30,28 +44,46 @@ public partial class RemoteScreenWindow : Window
         Title =
             $"ControlLab — Pantalla de {_machineId}";
 
-        // ---------------------------------------------------------
-        // Mostrar la captura inicial mientras conecta el stream
-        // ---------------------------------------------------------
+        MachineNameText.Text =
+            _machineId;
 
-        if (
-            IsValidJpeg(
-                initialImage
-            )
-        )
+        // ==========================================
+        // MOSTRAR CAPTURA INICIAL SI EXISTE
+        // ==========================================
+
+        if (IsValidJpeg(initialImage))
         {
-            SetImageSource(
-                initialImage
-            );
+            try
+            {
+                SetImageSource(initialImage);
+
+                LoadingPanel.Visibility =
+                    Visibility.Collapsed;
+            }
+            catch
+            {
+                // La transmisión proporcionará
+                // el siguiente frame.
+            }
         }
 
-        StatusText.Text =
-            $"● {_machineId}  •  Conectando transmisión...";
+        // ==========================================
+        // ESTADO INICIAL
+        // ==========================================
+
+        SetConnectingState();
+
+        _fpsStartTime =
+            DateTime.UtcNow;
+
+        // ==========================================
+        // CERRAR
+        // ==========================================
 
         Closed +=
-            (_, _) =>
+            async (_, _) =>
             {
-                _ = StopAsync();
+                await StopAsync();
             };
     }
 
@@ -72,25 +104,21 @@ public partial class RemoteScreenWindow : Window
                 _cancellation.Token
             );
         }
-        catch (
-            OperationCanceledException
-        )
+        catch (OperationCanceledException)
         {
             // Ventana cerrada.
         }
         catch (Exception ex)
         {
-            StatusText.Text =
-                $"● {_machineId}  •  Error de transmisión";
+            await Dispatcher.InvokeAsync(
+                () =>
+                {
+                    SetErrorState();
 
-            StatusText.Foreground =
-                new SolidColorBrush(
-                    Color.FromRgb(
-                        249,
-                        112,
-                        102
-                    )
-                );
+                    LoadingPanel.Visibility =
+                        Visibility.Collapsed;
+                }
+            );
 
             Console.WriteLine(
                 $"❌ Error iniciando transmisión de {_machineId}: " +
@@ -126,21 +154,28 @@ public partial class RemoteScreenWindow : Window
             cancellationToken
         );
 
-        StatusText.Text =
-            $"● {_machineId}  •  EN VIVO";
+        if (_closing)
+            return;
 
-        StatusText.Foreground =
-            new SolidColorBrush(
-                Color.FromRgb(
-                    50,
-                    213,
-                    131
-                )
-            );
+        await Dispatcher.InvokeAsync(
+            () =>
+            {
+                SetLiveState();
+
+                LoadingPanel.Visibility =
+                    Visibility.Visible;
+            }
+        );
 
         Console.WriteLine(
             $"🟢 Transmisión conectada: {_machineId}"
         );
+
+        _framesReceived =
+            0;
+
+        _fpsStartTime =
+            DateTime.UtcNow;
 
         _receiveTask =
             ReceiveFramesAsync(
@@ -210,6 +245,10 @@ public partial class RemoteScreenWindow : Window
                         cancellationToken
                     );
 
+                    // ==========================================
+                    // LÍMITE DE SEGURIDAD DEL FRAME
+                    // ==========================================
+
                     if (
                         memory.Length >
                         8 * 1024 * 1024
@@ -241,6 +280,8 @@ public partial class RemoteScreenWindow : Window
                     continue;
                 }
 
+                _framesReceived++;
+
                 await Dispatcher.InvokeAsync(
                     () =>
                     {
@@ -250,17 +291,12 @@ public partial class RemoteScreenWindow : Window
                                 imageBytes
                             );
 
-                            StatusText.Text =
-                                $"● {_machineId}  •  EN VIVO  •  {DateTime.Now:HH:mm:ss}";
+                            LoadingPanel.Visibility =
+                                Visibility.Collapsed;
 
-                            StatusText.Foreground =
-                                new SolidColorBrush(
-                                    Color.FromRgb(
-                                        50,
-                                        213,
-                                        131
-                                    )
-                                );
+                            UpdateLiveStats();
+
+                            SetLiveState();
                         }
                         catch (Exception ex)
                         {
@@ -272,24 +308,232 @@ public partial class RemoteScreenWindow : Window
                     }
                 );
             }
-            catch (
-                OperationCanceledException
-            )
+            catch (OperationCanceledException)
             {
                 return;
             }
-            catch (
-                WebSocketException ex
-            )
+            catch (WebSocketException ex)
             {
                 Console.WriteLine(
                     $"⚠️ WebSocket de {_machineId}: " +
                     $"{ex.Message}"
                 );
 
+                await Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (!_closing)
+                        {
+                            SetDisconnectedState();
+
+                            LoadingPanel.Visibility =
+                                Visibility.Collapsed;
+                        }
+                    }
+                );
+
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"❌ Error recibiendo frame: " +
+                    $"{ex.Message}"
+                );
+
+                await Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        if (!_closing)
+                        {
+                            SetErrorState();
+
+                            LoadingPanel.Visibility =
+                                Visibility.Collapsed;
+                        }
+                    }
+                );
+
                 return;
             }
         }
+    }
+
+    // =========================================================
+    // ACTUALIZAR FPS Y ESTADÍSTICAS
+    // =========================================================
+
+    private void UpdateLiveStats()
+    {
+        TimeSpan elapsed =
+            DateTime.UtcNow -
+            _fpsStartTime;
+
+        if (elapsed.TotalSeconds <= 0)
+            return;
+
+        double fps =
+            _framesReceived /
+            elapsed.TotalSeconds;
+
+        FpsText.Text =
+            $"{fps:0.0} FPS";
+
+        ConnectionText.Text =
+            "Conectado • transmisión activa";
+    }
+
+    // =========================================================
+    // ESTADO: CONECTANDO
+    // =========================================================
+
+    private void SetConnectingState()
+    {
+        StatusText.Text =
+            "CONECTANDO...";
+
+        StatusText.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    255,
+                    180,
+                    70
+                )
+            );
+
+        LiveIndicator.Text =
+            "●";
+
+        LiveIndicator.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    255,
+                    180,
+                    70
+                )
+            );
+
+        ConnectionText.Text =
+            "Conectando con el equipo...";
+
+        FpsText.Text =
+            "— FPS";
+
+        ResolutionText.Text =
+            "—";
+    }
+
+    // =========================================================
+    // ESTADO: EN VIVO
+    // =========================================================
+
+    private void SetLiveState()
+    {
+        StatusText.Text =
+            "EN VIVO";
+
+        StatusText.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    50,
+                    213,
+                    131
+                )
+            );
+
+        LiveIndicator.Text =
+            "●";
+
+        LiveIndicator.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    50,
+                    213,
+                    131
+                )
+            );
+
+        ConnectionText.Text =
+            "Conectado • transmisión activa";
+    }
+
+    // =========================================================
+    // ESTADO: DESCONECTADO
+    // =========================================================
+
+    private void SetDisconnectedState()
+    {
+        StatusText.Text =
+            "DESCONECTADO";
+
+        StatusText.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    249,
+                    112,
+                    102
+                )
+            );
+
+        LiveIndicator.Text =
+            "●";
+
+        LiveIndicator.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    249,
+                    112,
+                    102
+                )
+            );
+
+        ConnectionText.Text =
+            "Se perdió la conexión";
+    }
+
+    // =========================================================
+    // ESTADO: ERROR
+    // =========================================================
+
+    private void SetErrorState()
+    {
+        StatusText.Text =
+            "ERROR";
+
+        StatusText.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    249,
+                    112,
+                    102
+                )
+            );
+
+        LiveIndicator.Text =
+            "●";
+
+        LiveIndicator.Foreground =
+            new SolidColorBrush(
+                Color.FromRgb(
+                    249,
+                    112,
+                    102
+                )
+            );
+
+        ConnectionText.Text =
+            "Error en la transmisión";
+    }
+
+    // =========================================================
+    // BOTÓN DETENER
+    // =========================================================
+
+    private void StopButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        Close();
     }
 
     // =========================================================
@@ -313,6 +557,7 @@ public partial class RemoteScreenWindow : Window
                 (
                     _socket.State ==
                     WebSocketState.Open ||
+
                     _socket.State ==
                     WebSocketState.CloseReceived
                 )
@@ -338,11 +583,13 @@ public partial class RemoteScreenWindow : Window
         }
         finally
         {
-            _socket = null;
+            _socket =
+                null;
 
             _cancellation?.Dispose();
 
-            _cancellation = null;
+            _cancellation =
+                null;
 
             Console.WriteLine(
                 $"🔴 Transmisión detenida: {_machineId}"
@@ -411,14 +658,24 @@ public partial class RemoteScreenWindow : Window
             );
         }
 
+        BitmapFrame frame =
+            decoder.Frames[0];
+
         var bitmap =
             new WriteableBitmap(
-                decoder.Frames[0]
+                frame
             );
 
         bitmap.Freeze();
 
         RemoteImage.Source =
             bitmap;
+
+        // ==========================================
+        // RESOLUCIÓN REAL DEL FRAME
+        // ==========================================
+
+        ResolutionText.Text =
+            $"{frame.PixelWidth} × {frame.PixelHeight}";
     }
 }
