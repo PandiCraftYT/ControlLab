@@ -141,8 +141,16 @@ public sealed class WebSocketHandler
                 $"❌ Error WebSocket: {ex.Message}"
             );
 
-            context.Response.StatusCode = 500;
-            context.Response.Close();
+            try
+            {
+                context.Response.StatusCode =
+                    500;
+
+                context.Response.Close();
+            }
+            catch
+            {
+            }
 
             return;
         }
@@ -164,20 +172,65 @@ public sealed class WebSocketHandler
                 WebSocketState.Open
             )
             {
-                string? message =
-                    await ReceiveMessageAsync(
+                WebSocketPacket? packet =
+                    await ReceivePacketAsync(
                         socket
                     );
 
-                if (message == null)
+                if (packet == null)
+                {
                     break;
+                }
 
-                registeredAgent =
-                    await ProcessMessageAsync(
+                // ==========================================
+                // FRAME BINARIO DE STREAMING
+                // ==========================================
+
+                if (
+                    packet.MessageType ==
+                    WebSocketMessageType.Binary
+                )
+                {
+                    if (registeredAgent == null)
+                    {
+                        Console.WriteLine(
+                            "⚠️ Frame binario rechazado: " +
+                            "agente no registrado."
+                        );
+
+                        continue;
+                    }
+
+                    SaveBinaryStreamFrame(
                         socket,
-                        message,
-                        registeredAgent
+                        registeredAgent,
+                        packet.Data
                     );
+
+                    continue;
+                }
+
+                // ==========================================
+                // MENSAJE JSON
+                // ==========================================
+
+                if (
+                    packet.MessageType ==
+                    WebSocketMessageType.Text
+                )
+                {
+                    string message =
+                        Encoding.UTF8.GetString(
+                            packet.Data
+                        );
+
+                    registeredAgent =
+                        await ProcessMessageAsync(
+                            socket,
+                            message,
+                            registeredAgent
+                        );
+                }
             }
         }
         catch (WebSocketException ex)
@@ -306,7 +359,9 @@ public sealed class WebSocketHandler
                 case "COMMAND_RESULT":
 
                     if (registeredAgent == null)
+                    {
                         return null;
+                    }
 
                     LogCommandResult(
                         root
@@ -321,7 +376,9 @@ public sealed class WebSocketHandler
                 case "SCREEN_CAPTURE_RESULT":
 
                     if (registeredAgent == null)
+                    {
                         return null;
+                    }
 
                     string captureCommand =
                         GetString(
@@ -361,13 +418,15 @@ public sealed class WebSocketHandler
                     return registeredAgent;
 
                 // =================================================
-                // FRAME DE TRANSMISIÓN
+                // FRAME DE TRANSMISIÓN LEGACY
                 // =================================================
 
                 case "SCREEN_STREAM_FRAME":
 
                     if (registeredAgent == null)
+                    {
                         return null;
+                    }
 
                     SaveStreamFrame(
                         socket,
@@ -837,7 +896,9 @@ public sealed class WebSocketHandler
                 );
 
             if (imageBytes.Length == 0)
+            {
                 return;
+            }
 
             // =================================================
             // LÍMITE DE TAMAÑO
@@ -971,7 +1032,9 @@ public sealed class WebSocketHandler
                 );
 
             if (imageBytes.Length == 0)
+            {
                 return;
+            }
 
             // =================================================
             // LÍMITE DE TAMAÑO
@@ -1028,7 +1091,7 @@ public sealed class WebSocketHandler
     }
 
     // =========================================================
-    // GUARDAR FRAME DE TRANSMISIÓN
+    // GUARDAR FRAME DE TRANSMISIÓN LEGACY
     // =========================================================
 
     private void SaveStreamFrame(
@@ -1105,7 +1168,9 @@ public sealed class WebSocketHandler
                 );
 
             if (imageBytes.Length == 0)
+            {
                 return;
+            }
 
             // =================================================
             // LÍMITE DE TAMAÑO
@@ -1160,11 +1225,161 @@ public sealed class WebSocketHandler
     }
 
     // =========================================================
-    // RECIBIR MENSAJE
+    // GUARDAR FRAME BINARIO DE TRANSMISIÓN
     // =========================================================
 
-    private static async Task<string?>
-        ReceiveMessageAsync(
+    private void SaveBinaryStreamFrame(
+        WebSocket socket,
+        AgentConnection agent,
+        byte[] imageBytes)
+    {
+        string machineId =
+            agent.MachineId;
+
+        // =====================================================
+        // VALIDAR DATOS
+        // =====================================================
+
+        if (
+            imageBytes == null ||
+            imageBytes.Length == 0
+        )
+        {
+            return;
+        }
+
+        // =====================================================
+        // LÍMITE DE TAMAÑO
+        // =====================================================
+
+        if (
+            imageBytes.Length >
+            MaxMessageSize
+        )
+        {
+            Console.WriteLine(
+                $"⚠️ Frame binario demasiado grande: " +
+                $"{machineId}"
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // COMPROBAR SOCKET
+        // =====================================================
+
+        if (
+            !_agents.TryGetValue(
+                machineId,
+                out var currentAgent
+            ) ||
+            currentAgent.Socket != socket ||
+            currentAgent != agent
+        )
+        {
+            Console.WriteLine(
+                $"⚠️ Frame binario rechazado: " +
+                $"conexión no autorizada para {machineId}"
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // COMPROBAR AUTORIZACIÓN
+        // =====================================================
+
+        if (
+            !_isAgentAuthorized(
+                machineId
+            )
+        )
+        {
+            Console.WriteLine(
+                $"🔒 Frame binario rechazado: " +
+                $"Agent no autorizado {machineId}"
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // COMPROBAR JPEG
+        // =====================================================
+
+        if (!IsValidJpeg(imageBytes))
+        {
+            Console.WriteLine(
+                $"⚠️ Frame binario no válido: " +
+                $"{machineId}"
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // GUARDAR ÚLTIMO FRAME
+        // =====================================================
+
+        string base64Image =
+            Convert.ToBase64String(
+                imageBytes
+            );
+
+        _streamFrames[machineId] =
+            new ScreenCaptureData
+            {
+                MachineId =
+                    machineId,
+
+                Image =
+                    base64Image,
+
+                Timestamp =
+                    DateTime.UtcNow.ToString(
+                        "O"
+                    )
+            };
+
+        Console.WriteLine(
+            $"📡 Frame binario recibido: " +
+            $"{machineId} " +
+            $"({imageBytes.Length / 1024} KB)"
+        );
+    }
+
+    // =========================================================
+    // VALIDAR JPEG
+    // =========================================================
+
+    private static bool IsValidJpeg(
+        byte[] data)
+    {
+        if (
+            data == null ||
+            data.Length < 4
+        )
+        {
+            return false;
+        }
+
+        // JPEG comienza con FF D8
+        // y termina con FF D9.
+
+        return
+            data[0] == 0xFF &&
+            data[1] == 0xD8 &&
+            data[^2] == 0xFF &&
+            data[^1] == 0xD9;
+    }
+
+    // =========================================================
+    // RECIBIR MENSAJE WEBSOCKET
+    // =========================================================
+
+    private static async Task<WebSocketPacket?>
+        ReceivePacketAsync(
             WebSocket socket)
     {
         using var memory =
@@ -1174,6 +1389,9 @@ public sealed class WebSocketHandler
             new byte[BufferSize];
 
         int totalBytes = 0;
+
+        WebSocketMessageType? messageType =
+            null;
 
         while (true)
         {
@@ -1185,9 +1403,9 @@ public sealed class WebSocketHandler
                     CancellationToken.None
                 );
 
-            // =================================================
+            // ==========================================
             // CIERRE
-            // =================================================
+            // ==========================================
 
             if (
                 result.MessageType ==
@@ -1197,24 +1415,34 @@ public sealed class WebSocketHandler
                 return null;
             }
 
-            // =================================================
-            // SOLO TEXTO
-            // =================================================
+            // ==========================================
+            // DETERMINAR TIPO
+            // ==========================================
 
-            if (
-                result.MessageType !=
-                WebSocketMessageType.Text
+            if (messageType == null)
+            {
+                messageType =
+                    result.MessageType;
+            }
+            else if (
+                messageType !=
+                result.MessageType
             )
             {
-                continue;
+                Console.WriteLine(
+                    "⚠️ Un mensaje WebSocket cambió " +
+                    "de tipo durante la recepción."
+                );
+
+                return null;
             }
 
             totalBytes +=
                 result.Count;
 
-            // =================================================
+            // ==========================================
             // PROTECCIÓN DE TAMAÑO
-            // =================================================
+            // ==========================================
 
             if (
                 totalBytes >
@@ -1240,9 +1468,9 @@ public sealed class WebSocketHandler
                 return null;
             }
 
-            // =================================================
+            // ==========================================
             // GUARDAR FRAGMENTO
-            // =================================================
+            // ==========================================
 
             await memory.WriteAsync(
                 buffer.AsMemory(
@@ -1251,17 +1479,22 @@ public sealed class WebSocketHandler
                 )
             );
 
-            // =================================================
+            // ==========================================
             // MENSAJE COMPLETO
-            // =================================================
+            // ==========================================
 
             if (
                 result.EndOfMessage
             )
             {
-                return Encoding.UTF8.GetString(
-                    memory.ToArray()
-                );
+                return new WebSocketPacket
+                {
+                    MessageType =
+                        messageType.Value,
+
+                    Data =
+                        memory.ToArray()
+                };
             }
         }
     }
@@ -1321,5 +1554,24 @@ public sealed class WebSocketHandler
         ) &&
         value.ValueKind ==
             JsonValueKind.True;
+    }
+
+    // =========================================================
+    // PAQUETE WEBSOCKET
+    // =========================================================
+
+    private sealed class WebSocketPacket
+    {
+        public WebSocketMessageType MessageType
+        {
+            get;
+            init;
+        }
+
+        public byte[] Data
+        {
+            get;
+            init;
+        } = Array.Empty<byte>();
     }
 }

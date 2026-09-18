@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Runtime.InteropServices;
+
 const string AGENT_VERSION = "1.0.0";
 
 string configPath = Path.Combine(
@@ -62,6 +63,15 @@ if (string.IsNullOrWhiteSpace(machineId))
     return;
 }
 
+if (string.IsNullOrWhiteSpace(authToken))
+{
+    Console.WriteLine(
+        "❌ No se encontró un AuthToken válido."
+    );
+
+    return;
+}
+
 // ==========================================
 // INFORMACIÓN DEL AGENTE
 // ==========================================
@@ -74,48 +84,63 @@ Console.WriteLine($"Versión:  {AGENT_VERSION}");
 Console.WriteLine();
 
 // ==========================================
-// CONEXIÓN PRINCIPAL
+// RECONEXIÓN
 // ==========================================
+
+int reconnectDelaySeconds = 2;
 
 while (true)
 {
-    // ==========================================
-    // BUSCAR MANAGER AUTOMÁTICAMENTE
-    // ==========================================
+    ClientWebSocket? socket = null;
 
-    string? managerAddress =
-        await ManagerDiscovery.FindManagerAsync();
-
-    if (string.IsNullOrWhiteSpace(managerAddress))
-    {
-        Console.WriteLine(
-            "❌ No se encontró ControlLab Manager."
-        );
-
-        Console.WriteLine(
-            "🔄 Reintentando en 5 segundos..."
-        );
-
-        await Task.Delay(5000);
-
-        continue;
-    }
-
-    // ==========================================
-    // CREAR DIRECCIÓN DEL SERVIDOR
-    // ==========================================
-
-    string serverUrl =
-        $"ws://{managerAddress}:8080";
-
-    Console.WriteLine(
-        $"🟢 Manager encontrado: {managerAddress}"
-    );
-
-    using var socket = new ClientWebSocket();
+    CancellationTokenSource?
+        connectionCancellation = null;
 
     try
     {
+        // ==========================================
+        // BUSCAR MANAGER AUTOMÁTICAMENTE
+        // ==========================================
+
+        Console.WriteLine(
+            "📡 Buscando ControlLab Manager..."
+        );
+
+        string? managerAddress =
+            await ManagerDiscovery.FindManagerAsync();
+
+        if (
+            string.IsNullOrWhiteSpace(
+                managerAddress
+            )
+        )
+        {
+            Console.WriteLine(
+                "❌ No se encontró ControlLab Manager."
+            );
+
+            reconnectDelaySeconds =
+            await WaitBeforeReconnectAsync(
+                reconnectDelaySeconds
+            );
+
+            continue;
+        }
+
+        Console.WriteLine(
+            $"🟢 Manager encontrado: {managerAddress}"
+        );
+
+        // ==========================================
+        // CREAR DIRECCIÓN DEL SERVIDOR
+        // ==========================================
+
+        string serverUrl =
+            $"ws://{managerAddress}:8080";
+
+        socket =
+            new ClientWebSocket();
+
         // ==========================================
         // CONECTAR AL SERVIDOR
         // ==========================================
@@ -134,17 +159,42 @@ while (true)
         );
 
         // ==========================================
+        // REINICIAR BACKOFF
+        // ==========================================
+
+        reconnectDelaySeconds = 2;
+
+        // ==========================================
+        // TOKEN DE CANCELACIÓN DE LA CONEXIÓN
+        // ==========================================
+
+        connectionCancellation =
+            new CancellationTokenSource();
+
+        CancellationToken connectionToken =
+            connectionCancellation.Token;
+
+        // ==========================================
         // REGISTRO
         // ==========================================
 
         var registration = new
         {
             type = "AGENT_REGISTER",
+
             machineId = machineId,
-            hostname = Environment.MachineName,
-            platform = Environment.OSVersion.Platform.ToString(),
-            agentVersion = AGENT_VERSION,
-            authToken = authToken
+
+            hostname =
+                Environment.MachineName,
+
+            platform =
+                Environment.OSVersion.Platform.ToString(),
+
+            agentVersion =
+                AGENT_VERSION,
+
+            authToken =
+                authToken
         };
 
         await SendMessageAsync(
@@ -180,20 +230,29 @@ while (true)
         // TAREAS DEL AGENTE
         // ==========================================
 
-        var receiveTask =
-            ReceiveMessagesAsync(socket);
+        Task receiveTask =
+            ReceiveMessagesAsync(
+                socket,
+                connectionToken
+            );
 
-        var heartbeatTask =
+        Task heartbeatTask =
             SendHeartbeatAsync(
                 socket,
-                machineId
+                machineId,
+                connectionToken
             );
 
-        var screenPreviewTask =
+        Task screenPreviewTask =
             SendScreenPreviewAsync(
                 socket,
-                machineId
+                machineId,
+                connectionToken
             );
+
+        // ==========================================
+        // ESPERAR A QUE UNA TAREA TERMINE
+        // ==========================================
 
         await Task.WhenAny(
             receiveTask,
@@ -202,14 +261,106 @@ while (true)
         );
 
         Console.WriteLine(
-            "🔴 Conexión finalizada"
+            "🔴 Una tarea de conexión finalizó."
+        );
+
+        // ==========================================
+        // CANCELAR TODAS LAS TAREAS
+        // ==========================================
+
+        try
+        {
+            connectionCancellation.Cancel();
+        }
+        catch
+        {
+        }
+
+        // ==========================================
+        // CERRAR SOCKET
+        // ==========================================
+
+        try
+        {
+            if (
+                socket.State ==
+                WebSocketState.Open
+            )
+            {
+                await socket.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    "Reconectando",
+                    CancellationToken.None
+                );
+            }
+        }
+        catch
+        {
+        }
+
+        // ==========================================
+        // ESPERAR TAREAS
+        // ==========================================
+
+        try
+        {
+            await Task.WhenAll(
+                receiveTask,
+                heartbeatTask,
+                screenPreviewTask
+            );
+        }
+        catch
+        {
+            // Las tareas pueden finalizar
+            // debido a la cancelación.
+        }
+    }
+    catch (OperationCanceledException)
+    {
+        Console.WriteLine(
+            "🛑 Conexión cancelada."
+        );
+    }
+    catch (WebSocketException ex)
+    {
+        Console.WriteLine(
+            $"⚠️ WebSocket desconectado: {ex.Message}"
         );
     }
     catch (Exception ex)
     {
         Console.WriteLine(
-            $"❌ Error: {ex.Message}"
+            $"❌ Error de conexión: {ex.Message}"
         );
+    }
+    finally
+    {
+        // ==========================================
+        // CANCELAR CONEXIÓN
+        // ==========================================
+
+        try
+        {
+            connectionCancellation?.Cancel();
+        }
+        catch
+        {
+        }
+
+        connectionCancellation?.Dispose();
+
+        // ==========================================
+        // CERRAR SOCKET
+        // ==========================================
+
+        try
+        {
+            socket?.Dispose();
+        }
+        catch
+        {
+        }
     }
 
     // ==========================================
@@ -217,15 +368,52 @@ while (true)
     // ==========================================
 
     Console.WriteLine(
-        "🔄 Intentando reconectar en 5 segundos..."
+        $"🔄 Reconectando en {reconnectDelaySeconds} segundos..."
     );
 
-    await Task.Delay(5000);
+    await Task.Delay(
+        TimeSpan.FromSeconds(
+            reconnectDelaySeconds
+        )
+    );
+
+    // ==========================================
+    // BACKOFF PROGRESIVO
+    // ==========================================
+
+    reconnectDelaySeconds =
+        Math.Min(
+            reconnectDelaySeconds * 2,
+            30
+        );
 }
 
-// ==========================================
+// =========================================================
+// ESPERAR ANTES DE RECONEXIÓN
+// =========================================================
+
+static async Task<int> WaitBeforeReconnectAsync(
+    int delaySeconds)
+{
+    Console.WriteLine(
+        $"🔄 Reintentando en {delaySeconds} segundos..."
+    );
+
+    await Task.Delay(
+        TimeSpan.FromSeconds(
+            delaySeconds
+        )
+    );
+
+    return Math.Min(
+        delaySeconds * 2,
+        30
+    );
+}
+
+// =========================================================
 // OBTENER / CREAR MACHINE ID
-// ==========================================
+// =========================================================
 
 static async Task<string> GetOrCreateMachineIdAsync(
     string configPath)
@@ -283,10 +471,15 @@ static async Task<string> GetOrCreateMachineIdAsync(
     string newMachineId =
         $"PC-{Guid.NewGuid():N}".ToUpperInvariant();
 
-    var newConfig = new AgentConfig
-    {
-        MachineId = newMachineId
-    };
+    var newConfig =
+        new AgentConfig
+        {
+            MachineId =
+                newMachineId,
+
+            AuthToken =
+                config?.AuthToken ?? ""
+        };
 
     string json =
         JsonSerializer.Serialize(
@@ -312,9 +505,10 @@ static async Task<string> GetOrCreateMachineIdAsync(
 
     return newMachineId;
 }
-// ==========================================
+
+// =========================================================
 // OBTENER AUTH TOKEN
-// ==========================================
+// =========================================================
 
 static async Task<string> GetAuthTokenAsync(
     string configPath)
@@ -351,9 +545,10 @@ static async Task<string> GetAuthTokenAsync(
         return "";
     }
 }
-// ==========================================
+
+// =========================================================
 // TRANSMISIÓN DE PANTALLA
-// ==========================================
+// =========================================================
 
 static async Task StartScreenStreamAsync(
     ClientWebSocket socket,
@@ -373,45 +568,25 @@ static async Task StartScreenStreamAsync(
         {
             try
             {
-                // ------------------------------------------
+                // ==========================================
                 // CAPTURAR PANTALLA
-                // ------------------------------------------
+                // ==========================================
 
                 byte[] imageBytes =
                     ScreenCapture.CaptureStreamFrame();
 
-                string base64Image =
-                    Convert.ToBase64String(
-                        imageBytes
-                    );
+                // ==========================================
+                // ENVIAR FRAME JPEG COMO BINARIO
+                // ==========================================
 
-                // ------------------------------------------
-                // ENVIAR FRAME
-                // ------------------------------------------
-
-                var frame = new
-                {
-                    type =
-                        "SCREEN_STREAM_FRAME",
-
-                    machineId =
-                        machineId,
-
-                    image =
-                        base64Image,
-
-                    timestamp =
-                        DateTime.UtcNow.ToString("O")
-                };
-
-                await SendMessageAsync(
+                await SendBinaryMessageAsync(
                     socket,
-                    frame
+                    imageBytes
                 );
 
-                // ------------------------------------------
+                // ==========================================
                 // 10 FPS APROX.
-                // ------------------------------------------
+                // ==========================================
 
                 await Task.Delay(
                     100,
@@ -422,23 +597,35 @@ static async Task StartScreenStreamAsync(
             {
                 break;
             }
+            catch (WebSocketException)
+            {
+                break;
+            }
             catch (Exception ex)
             {
                 Console.WriteLine(
-                    $"❌ Error en frame de transmisión: " +
-                    $"{ex.Message}"
+                    $"❌ Error en frame de transmisión: {ex.Message}"
                 );
 
-                await Task.Delay(
-                    250,
-                    cancellationToken
-                );
+                try
+                {
+                    await Task.Delay(
+                        250,
+                        cancellationToken
+                    );
+                }
+                catch
+                {
+                    break;
+                }
             }
         }
     }
     catch (OperationCanceledException)
     {
-        // Transmisión detenida.
+    }
+    catch (WebSocketException)
+    {
     }
     catch (Exception ex)
     {
@@ -451,9 +638,10 @@ static async Task StartScreenStreamAsync(
         $"🔴 Transmisión finalizada para {machineId}"
     );
 }
-// ==========================================
-// ENVIAR MENSAJE
-// ==========================================
+
+// =========================================================
+// ENVIAR MENSAJE DE TEXTO
+// =========================================================
 
 static async Task SendMessageAsync(
     ClientWebSocket socket,
@@ -463,14 +651,28 @@ static async Task SendMessageAsync(
 
     try
     {
+        if (
+            socket.State !=
+            WebSocketState.Open
+        )
+        {
+            return;
+        }
+
         string json =
-            JsonSerializer.Serialize(message);
+            JsonSerializer.Serialize(
+                message
+            );
 
         byte[] bytes =
-            Encoding.UTF8.GetBytes(json);
+            Encoding.UTF8.GetBytes(
+                json
+            );
 
         await socket.SendAsync(
-            new ArraySegment<byte>(bytes),
+            new ArraySegment<byte>(
+                bytes
+            ),
             WebSocketMessageType.Text,
             true,
             CancellationToken.None
@@ -482,71 +684,142 @@ static async Task SendMessageAsync(
     }
 }
 
-// ==========================================
-// HEARTBEAT
-// ==========================================
+// =========================================================
+// ENVIAR FRAME BINARIO
+// =========================================================
 
-static async Task SendHeartbeatAsync(
+static async Task SendBinaryMessageAsync(
     ClientWebSocket socket,
-    string machineId)
+    byte[] data)
 {
-    while (
-        socket.State ==
-        WebSocketState.Open
-    )
-    {
-        await Task.Delay(10000);
+    await SendLockHolder.Lock.WaitAsync();
 
+    try
+    {
         if (
             socket.State !=
             WebSocketState.Open
         )
         {
-            break;
+            return;
         }
 
-        var heartbeat = new
+        if (
+            data == null ||
+            data.Length == 0
+        )
         {
-            type = "HEARTBEAT",
-            machineId = machineId
-        };
+            return;
+        }
 
-        await SendMessageAsync(
-            socket,
-            heartbeat
+        await socket.SendAsync(
+            new ArraySegment<byte>(
+                data
+            ),
+            WebSocketMessageType.Binary,
+            true,
+            CancellationToken.None
         );
+    }
+    finally
+    {
+        SendLockHolder.Lock.Release();
+    }
+}
 
+// =========================================================
+// HEARTBEAT
+// =========================================================
+
+static async Task SendHeartbeatAsync(
+    ClientWebSocket socket,
+    string machineId,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        while (
+            !cancellationToken.IsCancellationRequested &&
+            socket.State == WebSocketState.Open
+        )
+        {
+            await Task.Delay(
+                10000,
+                cancellationToken
+            );
+
+            if (
+                cancellationToken.IsCancellationRequested ||
+                socket.State != WebSocketState.Open
+            )
+            {
+                break;
+            }
+
+            var heartbeat =
+                new
+                {
+                    type =
+                        "HEARTBEAT",
+
+                    machineId =
+                        machineId
+                };
+
+            await SendMessageAsync(
+                socket,
+                heartbeat
+            );
+
+            Console.WriteLine(
+                "❤️ Heartbeat enviado"
+            );
+        }
+    }
+    catch (OperationCanceledException)
+    {
+    }
+    catch (WebSocketException)
+    {
+    }
+    catch (Exception ex)
+    {
         Console.WriteLine(
-            "❤️ Heartbeat enviado"
+            $"❌ Error en heartbeat: {ex.Message}"
         );
     }
 }
 
-// ==========================================
+// =========================================================
 // RECIBIR MENSAJES DEL SERVIDOR
-// ==========================================
+// =========================================================
 
 static async Task ReceiveMessagesAsync(
-    ClientWebSocket socket)
+    ClientWebSocket socket,
+    CancellationToken cancellationToken)
 {
-    byte[] buffer = new byte[4096];
+    byte[] buffer =
+        new byte[4096];
 
-    CancellationTokenSource? screenStreamCancellation = null;
-    Task? screenStreamTask = null;
+    CancellationTokenSource?
+        screenStreamCancellation = null;
 
-    while (
-        socket.State ==
-        WebSocketState.Open
-    )
+    Task?
+        screenStreamTask = null;
+
+    try
     {
-        try
+        while (
+            !cancellationToken.IsCancellationRequested &&
+            socket.State == WebSocketState.Open
+        )
         {
-            var result =
+            WebSocketReceiveResult result =
                 await socket.ReceiveAsync(
                     new ArraySegment<byte>(
                         buffer
                     ),
-                    CancellationToken.None
+                    cancellationToken
                 );
 
             if (
@@ -555,6 +828,14 @@ static async Task ReceiveMessagesAsync(
             )
             {
                 break;
+            }
+
+            if (
+                result.MessageType !=
+                WebSocketMessageType.Text
+            )
+            {
+                continue;
             }
 
             string message =
@@ -595,23 +876,36 @@ static async Task ReceiveMessagesAsync(
                     // PING
                     // ==========================================
 
-                    if (command.Command == "PING")
+                    if (
+                        command.Command ==
+                        "PING"
+                    )
                     {
                         Console.WriteLine(
                             "🏓 Comando PING recibido"
                         );
 
-                        var response = new
-                        {
-                            type = "COMMAND_RESULT",
-                            machineId =
-                                command.MachineId,
-                            command = "PING",
-                            success = true,
-                            message = "PONG",
-                            timestamp =
-                                DateTime.UtcNow.ToString("O")
-                        };
+                        var response =
+                            new
+                            {
+                                type =
+                                    "COMMAND_RESULT",
+
+                                machineId =
+                                    command.MachineId,
+
+                                command =
+                                    "PING",
+
+                                success =
+                                    true,
+
+                                message =
+                                    "PONG",
+
+                                timestamp =
+                                    DateTime.UtcNow.ToString("O")
+                            };
 
                         await SendMessageAsync(
                             socket,
@@ -651,25 +945,27 @@ static async Task ReceiveMessagesAsync(
                                     imageBytes
                                 );
 
-                            var response = new
-                            {
-                                type =
-                                    "SCREEN_CAPTURE_RESULT",
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "SCREEN_CAPTURE_RESULT",
 
-                                machineId =
-                                    command.MachineId,
+                                    machineId =
+                                        command.MachineId,
 
-                                command =
-                                    "SCREEN_CAPTURE",
+                                    command =
+                                        "SCREEN_CAPTURE",
 
-                                success = true,
+                                    success =
+                                        true,
 
-                                image =
-                                    base64Image,
+                                    image =
+                                        base64Image,
 
-                                timestamp =
-                                    DateTime.UtcNow.ToString("O")
-                            };
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -682,25 +978,27 @@ static async Task ReceiveMessagesAsync(
                         }
                         catch (Exception ex)
                         {
-                            var response = new
-                            {
-                                type =
-                                    "SCREEN_CAPTURE_RESULT",
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "SCREEN_CAPTURE_RESULT",
 
-                                machineId =
-                                    command.MachineId,
+                                    machineId =
+                                        command.MachineId,
 
-                                command =
-                                    "SCREEN_CAPTURE",
+                                    command =
+                                        "SCREEN_CAPTURE",
 
-                                success = false,
+                                    success =
+                                        false,
 
-                                message =
-                                    ex.Message,
+                                    message =
+                                        ex.Message,
 
-                                timestamp =
-                                    DateTime.UtcNow.ToString("O")
-                            };
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -714,7 +1012,7 @@ static async Task ReceiveMessagesAsync(
                     }
 
                     // ==========================================
-                    // INICIAR TRANSMISIÓN DE PANTALLA
+                    // INICIAR TRANSMISIÓN
                     // ==========================================
 
                     else if (
@@ -726,9 +1024,14 @@ static async Task ReceiveMessagesAsync(
                             "📡 Comando START_SCREEN_STREAM recibido"
                         );
 
-                        // Si ya existe una transmisión,
-                        // primero la detenemos.
-                        screenStreamCancellation?.Cancel();
+                        // Detener stream anterior
+                        try
+                        {
+                            screenStreamCancellation?.Cancel();
+                        }
+                        catch
+                        {
+                        }
 
                         screenStreamCancellation =
                             new CancellationTokenSource();
@@ -753,7 +1056,7 @@ static async Task ReceiveMessagesAsync(
                     }
 
                     // ==========================================
-                    // DETENER TRANSMISIÓN DE PANTALLA
+                    // DETENER TRANSMISIÓN
                     // ==========================================
 
                     else if (
@@ -765,15 +1068,29 @@ static async Task ReceiveMessagesAsync(
                             "🛑 Comando STOP_SCREEN_STREAM recibido"
                         );
 
-                        screenStreamCancellation?.Cancel();
+                        try
+                        {
+                            screenStreamCancellation?.Cancel();
+                        }
+                        catch
+                        {
+                        }
 
-                        screenStreamCancellation = null;
-                        screenStreamTask = null;
+                        screenStreamCancellation =
+                            null;
+
+                        screenStreamTask =
+                            null;
 
                         Console.WriteLine(
                             "🔴 Transmisión de pantalla detenida"
                         );
                     }
+
+                    // ==========================================
+                    // PREVIEW
+                    // ==========================================
+
                     else if (
                         command.Command ==
                         "PREVIEW_CAPTURE"
@@ -798,25 +1115,27 @@ static async Task ReceiveMessagesAsync(
                                     imageBytes
                                 );
 
-                            var response = new
-                            {
-                                type =
-                                    "SCREEN_CAPTURE_RESULT",
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "SCREEN_CAPTURE_RESULT",
 
-                                machineId =
-                                    command.MachineId,
+                                    machineId =
+                                        command.MachineId,
 
-                                command =
-                                    "PREVIEW_CAPTURE",
+                                    command =
+                                        "PREVIEW_CAPTURE",
 
-                                success = true,
+                                    success =
+                                        true,
 
-                                image =
-                                    base64Image,
+                                    image =
+                                        base64Image,
 
-                                timestamp =
-                                    DateTime.UtcNow.ToString("O")
-                            };
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -830,25 +1149,27 @@ static async Task ReceiveMessagesAsync(
                         }
                         catch (Exception ex)
                         {
-                            var response = new
-                            {
-                                type =
-                                    "SCREEN_CAPTURE_RESULT",
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "SCREEN_CAPTURE_RESULT",
 
-                                machineId =
-                                    command.MachineId,
+                                    machineId =
+                                        command.MachineId,
 
-                                command =
-                                    "PREVIEW_CAPTURE",
+                                    command =
+                                        "PREVIEW_CAPTURE",
 
-                                success = false,
+                                    success =
+                                        false,
 
-                                message =
-                                    ex.Message,
+                                    message =
+                                        ex.Message,
 
-                                timestamp =
-                                    DateTime.UtcNow.ToString("O")
-                            };
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -861,7 +1182,15 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
-                    else if (command.Command == "LOCK_SESSION")
+
+                    // ==========================================
+                    // BLOQUEAR SESIÓN
+                    // ==========================================
+
+                    else if (
+                        command.Command ==
+                        "LOCK_SESSION"
+                    )
                     {
                         Console.WriteLine(
                             "🔒 Comando LOCK_SESSION recibido"
@@ -870,21 +1199,31 @@ static async Task ReceiveMessagesAsync(
                         try
                         {
                             bool success =
-                            WindowsNativeMethods.LockWorkStation();
+                                WindowsNativeMethods
+                                    .LockWorkStation();
 
-                            var response = new
-                            {
-                                type = "COMMAND_RESULT",
-                                machineId = command.MachineId,
-                                command = "LOCK_SESSION",
-                                success,
-                                message =
-                                    success
-                                        ? "Sesión bloqueada correctamente."
-                                        : "Windows no pudo bloquear la sesión.",
-                                timestamp =
-                                    DateTime.UtcNow.ToString("O")
-                            };
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "COMMAND_RESULT",
+
+                                    machineId =
+                                        command.MachineId,
+
+                                    command =
+                                        "LOCK_SESSION",
+
+                                    success,
+
+                                    message =
+                                        success
+                                            ? "Sesión bloqueada correctamente."
+                                            : "Windows no pudo bloquear la sesión.",
+
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -899,16 +1238,27 @@ static async Task ReceiveMessagesAsync(
                         }
                         catch (Exception ex)
                         {
-                            var response = new
-                            {
-                                type = "COMMAND_RESULT",
-                                machineId = command.MachineId,
-                                command = "LOCK_SESSION",
-                                success = false,
-                                message = ex.Message,
-                                timestamp =
-                                    DateTime.UtcNow.ToString("O")
-                            };
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "COMMAND_RESULT",
+
+                                    machineId =
+                                        command.MachineId,
+
+                                    command =
+                                        "LOCK_SESSION",
+
+                                    success =
+                                        false,
+
+                                    message =
+                                        ex.Message,
+
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -920,7 +1270,15 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
-                    else if (command.Command == "RESTART_PC")
+
+                    // ==========================================
+                    // REINICIAR PC
+                    // ==========================================
+
+                    else if (
+                        command.Command ==
+                        "RESTART_PC"
+                    )
                     {
                         Console.WriteLine(
                             "🔄 Comando RESTART_PC recibido"
@@ -945,15 +1303,27 @@ static async Task ReceiveMessagesAsync(
 
                             process.Start();
 
-                            var response = new
-                            {
-                                type = "COMMAND_RESULT",
-                                machineId = command.MachineId,
-                                command = "RESTART_PC",
-                                success = true,
-                                message = "Reinicio solicitado correctamente.",
-                                timestamp = DateTime.UtcNow.ToString("O")
-                            };
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "COMMAND_RESULT",
+
+                                    machineId =
+                                        command.MachineId,
+
+                                    command =
+                                        "RESTART_PC",
+
+                                    success =
+                                        true,
+
+                                    message =
+                                        "Reinicio solicitado correctamente.",
+
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -966,15 +1336,27 @@ static async Task ReceiveMessagesAsync(
                         }
                         catch (Exception ex)
                         {
-                            var response = new
-                            {
-                                type = "COMMAND_RESULT",
-                                machineId = command.MachineId,
-                                command = "RESTART_PC",
-                                success = false,
-                                message = ex.Message,
-                                timestamp = DateTime.UtcNow.ToString("O")
-                            };
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "COMMAND_RESULT",
+
+                                    machineId =
+                                        command.MachineId,
+
+                                    command =
+                                        "RESTART_PC",
+
+                                    success =
+                                        false,
+
+                                    message =
+                                        ex.Message,
+
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
 
                             await SendMessageAsync(
                                 socket,
@@ -986,53 +1368,111 @@ static async Task ReceiveMessagesAsync(
                             );
                         }
                     }
-                    else if (command.Command == "SHUTDOWN_PC")
+
+                    // ==========================================
+                    // APAGAR PC
+                    // ==========================================
+
+                    else if (
+                        command.Command ==
+                        "SHUTDOWN_PC"
+                    )
                     {
-                        Console.WriteLine("⏻ Comando SHUTDOWN_PC recibido");
+                        Console.WriteLine(
+                            "⏻ Comando SHUTDOWN_PC recibido"
+                        );
 
                         try
                         {
-                            using var process = new System.Diagnostics.Process();
+                            using var process =
+                                new System.Diagnostics.Process();
 
-                            process.StartInfo.FileName = "shutdown.exe";
-                            process.StartInfo.Arguments = "/s /t 0";
-                            process.StartInfo.CreateNoWindow = true;
-                            process.StartInfo.UseShellExecute = false;
+                            process.StartInfo.FileName =
+                                "shutdown.exe";
+
+                            process.StartInfo.Arguments =
+                                "/s /t 0";
+
+                            process.StartInfo.CreateNoWindow =
+                                true;
+
+                            process.StartInfo.UseShellExecute =
+                                false;
 
                             process.Start();
 
-                            var response = new
-                            {
-                                type = "COMMAND_RESULT",
-                                machineId = command.MachineId,
-                                command = "SHUTDOWN_PC",
-                                success = true,
-                                message = "Apagado solicitado correctamente.",
-                                timestamp = DateTime.UtcNow.ToString("O")
-                            };
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "COMMAND_RESULT",
 
-                            await SendMessageAsync(socket, response);
+                                    machineId =
+                                        command.MachineId,
 
-                            Console.WriteLine("⏻ Apagado solicitado");
+                                    command =
+                                        "SHUTDOWN_PC",
+
+                                    success =
+                                        true,
+
+                                    message =
+                                        "Apagado solicitado correctamente.",
+
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                "⏻ Apagado solicitado"
+                            );
                         }
                         catch (Exception ex)
                         {
-                            var response = new
-                            {
-                                type = "COMMAND_RESULT",
-                                machineId = command.MachineId,
-                                command = "SHUTDOWN_PC",
-                                success = false,
-                                message = ex.Message,
-                                timestamp = DateTime.UtcNow.ToString("O")
-                            };
+                            var response =
+                                new
+                                {
+                                    type =
+                                        "COMMAND_RESULT",
 
-                            await SendMessageAsync(socket, response);
+                                    machineId =
+                                        command.MachineId,
 
-                            Console.WriteLine($"❌ Error apagando PC: {ex.Message}");
+                                    command =
+                                        "SHUTDOWN_PC",
+
+                                    success =
+                                        false,
+
+                                    message =
+                                        ex.Message,
+
+                                    timestamp =
+                                        DateTime.UtcNow.ToString("O")
+                                };
+
+                            await SendMessageAsync(
+                                socket,
+                                response
+                            );
+
+                            Console.WriteLine(
+                                $"❌ Error apagando PC: {ex.Message}"
+                            );
                         }
                     }
                 }
+            }
+            catch (JsonException)
+            {
+                Console.WriteLine(
+                    "⚠️ Comando JSON inválido."
+                );
             }
             catch (Exception ex)
             {
@@ -1041,97 +1481,156 @@ static async Task ReceiveMessagesAsync(
                 );
             }
         }
-        catch (WebSocketException ex)
-        {
-            Console.WriteLine(
-                $"❌ WebSocket: {ex.Message}"
-            );
-
-            break;
-        }
     }
-}
-// ==========================================
-// PREVIEW AUTOMÁTICA DE PANTALLA
-// ==========================================
-
-static async Task SendScreenPreviewAsync(
-    ClientWebSocket socket,
-    string machineId)
-{
-    while (
-        socket.State ==
-        WebSocketState.Open
-    )
+    catch (OperationCanceledException)
+    {
+    }
+    catch (WebSocketException ex)
+    {
+        Console.WriteLine(
+            $"❌ WebSocket: {ex.Message}"
+        );
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(
+            $"❌ Error recibiendo mensajes: {ex.Message}"
+        );
+    }
+    finally
     {
         try
         {
-            // Esperar antes de generar la siguiente captura
-            await Task.Delay(3000);
+            screenStreamCancellation?.Cancel();
+        }
+        catch
+        {
+        }
 
-            if (
-                socket.State !=
-                WebSocketState.Open
-            )
+        screenStreamCancellation?.Dispose();
+
+        // Evitar warning de variable no utilizada
+        _ = screenStreamTask;
+    }
+}
+
+// =========================================================
+// PREVIEW AUTOMÁTICA DE PANTALLA
+// =========================================================
+
+static async Task SendScreenPreviewAsync(
+    ClientWebSocket socket,
+    string machineId,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        while (
+            !cancellationToken.IsCancellationRequested &&
+            socket.State == WebSocketState.Open
+        )
+        {
+            try
+            {
+                // ==========================================
+                // ESPERAR ANTES DE GENERAR
+                // ==========================================
+
+                await Task.Delay(
+                    3000,
+                    cancellationToken
+                );
+
+                if (
+                    cancellationToken.IsCancellationRequested ||
+                    socket.State != WebSocketState.Open
+                )
+                {
+                    break;
+                }
+
+                Console.WriteLine(
+                    "🖥️ Generando preview automática..."
+                );
+
+                // ==========================================
+                // CAPTURAR
+                // ==========================================
+
+                string filePath =
+                    ScreenCapture.CaptureScreen();
+
+                byte[] imageBytes =
+                    await File.ReadAllBytesAsync(
+                        filePath,
+                        cancellationToken
+                    );
+
+                string base64Image =
+                    Convert.ToBase64String(
+                        imageBytes
+                    );
+
+                var response =
+                    new
+                    {
+                        type =
+                            "SCREEN_CAPTURE_RESULT",
+
+                        machineId =
+                            machineId,
+
+                        command =
+                            "SCREEN_PREVIEW",
+
+                        success =
+                            true,
+
+                        image =
+                            base64Image,
+
+                        timestamp =
+                            DateTime.UtcNow.ToString("O")
+                    };
+
+                await SendMessageAsync(
+                    socket,
+                    response
+                );
+
+                Console.WriteLine(
+                    "📸 Preview automática enviada"
+                );
+            }
+            catch (OperationCanceledException)
             {
                 break;
             }
-
-            Console.WriteLine(
-                "🖥️ Generando preview automática..."
-            );
-
-            string filePath =
-                ScreenCapture.CaptureScreen();
-
-            byte[] imageBytes =
-                await File.ReadAllBytesAsync(
-                    filePath
-                );
-
-            string base64Image =
-                Convert.ToBase64String(
-                    imageBytes
-                );
-
-            var response = new
+            catch (WebSocketException)
             {
-                type = "SCREEN_CAPTURE_RESULT",
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"❌ Error en preview automática: {ex.Message}"
+                );
 
-                machineId = machineId,
-
-                command = "SCREEN_PREVIEW",
-
-                success = true,
-
-                image = base64Image,
-
-                timestamp =
-                    DateTime.UtcNow.ToString("O")
-            };
-
-            await SendMessageAsync(
-                socket,
-                response
-            );
-
-            Console.WriteLine(
-                "📸 Preview automática enviada"
-            );
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(
-                $"❌ Error en preview automática: {ex.Message}"
-            );
-
-            break;
+                break;
+            }
         }
     }
+    catch (OperationCanceledException)
+    {
+    }
+    catch (WebSocketException)
+    {
+    }
 }
-// ==========================================
+
+// =========================================================
 // OBTENER MACHINE ID
-// ==========================================
+// =========================================================
 
 static string GetMachineId()
 {
@@ -1142,12 +1641,16 @@ static string GetMachineId()
         );
 
     if (!File.Exists(configPath))
+    {
         return "";
+    }
 
     try
     {
         string json =
-            File.ReadAllText(configPath);
+            File.ReadAllText(
+                configPath
+            );
 
         var config =
             JsonSerializer.Deserialize<AgentConfig>(
@@ -1166,9 +1669,9 @@ static string GetMachineId()
     }
 }
 
-// ==========================================
+// =========================================================
 // CONFIGURACIÓN
-// ==========================================
+// =========================================================
 
 public class AgentConfig
 {
@@ -1177,9 +1680,9 @@ public class AgentConfig
     public string AuthToken { get; set; } = "";
 }
 
-// ==========================================
+// =========================================================
 // COMANDO DEL SERVIDOR
-// ==========================================
+// =========================================================
 
 public class ServerCommand
 {
@@ -1190,18 +1693,19 @@ public class ServerCommand
     public string MachineId { get; set; } = "";
 }
 
-// ==========================================
+// =========================================================
 // PROTECCIÓN DE ENVÍOS WEBSOCKET
-// ==========================================
+// =========================================================
 
 public static class SendLockHolder
 {
     public static readonly SemaphoreSlim Lock =
         new(1, 1);
 }
-// ==========================================
+
+// =========================================================
 // FUNCIONES NATIVAS DE WINDOWS
-// ==========================================
+// =========================================================
 
 public static class WindowsNativeMethods
 {
