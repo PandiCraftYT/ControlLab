@@ -305,6 +305,25 @@ public partial class AgentDetailsWindow : Window
             _socket =
                 new ClientWebSocket();
 
+            // =========================================================
+            // AUTENTICACIÓN DEL WEBSOCKET
+            // =========================================================
+
+            string? sessionToken =
+                ControlLabApi.GetSessionToken();
+
+            if (string.IsNullOrWhiteSpace(sessionToken))
+            {
+                throw new InvalidOperationException(
+                    "No existe una sesión de administrador válida."
+                );
+            }
+
+            _socket.Options.SetRequestHeader(
+                "Authorization",
+                $"Bearer {sessionToken}"
+            );
+
             Uri streamUri =
                 new Uri(
                     "ws://localhost:8080/ws/screen/" +

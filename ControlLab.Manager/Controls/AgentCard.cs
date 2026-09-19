@@ -9,6 +9,8 @@ using System.Windows.Media.Imaging;
 using System.IO;
 using ControlLab.Manager.Models;
 using System.Threading;
+using System.Net.Http.Headers;
+using ControlLab.Manager.Services;
 namespace ControlLab.Manager.Controls;
 
 public static class AgentCard
@@ -613,6 +615,7 @@ public static class AgentCard
             }
         }
     }
+
     // ==========================================
     // OBTENER ÚLTIMA CAPTURA
     // ==========================================
@@ -625,6 +628,21 @@ public static class AgentCard
         try
         {
             // ==========================================
+            // OBTENER SESIÓN ACTUAL
+            // ==========================================
+
+            string? sessionToken =
+                ControlLabApi.GetSessionToken();
+
+            if (string.IsNullOrWhiteSpace(sessionToken))
+            {
+                statusText.Text =
+                    "Sesión no válida";
+
+                return;
+            }
+
+            // ==========================================
             // 1. SOLICITAR NUEVO PREVIEW
             // ==========================================
 
@@ -633,14 +651,31 @@ public static class AgentCard
                 $"{Uri.EscapeDataString(machineId)}" +
                 "/preview";
 
+            using var previewRequest =
+                new HttpRequestMessage(
+                    HttpMethod.Post,
+                    previewUrl
+                );
+
+            previewRequest.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    sessionToken
+                );
+
             using var previewResponse =
-                await HttpClient.PostAsync(
-                    previewUrl,
-                    null
+                await HttpClient.SendAsync(
+                    previewRequest
                 );
 
             if (!previewResponse.IsSuccessStatusCode)
             {
+                Console.WriteLine(
+                    $"⚠️ Preview POST rechazado para {machineId}: " +
+                    $"{(int)previewResponse.StatusCode} " +
+                    $"{previewResponse.StatusCode}"
+                );
+
                 statusText.Text =
                     "Preview no disponible";
 
@@ -662,24 +697,49 @@ public static class AgentCard
             {
                 try
                 {
-                    byte[] result =
-                        await HttpClient.GetByteArrayAsync(
+                    using var getRequest =
+                        new HttpRequestMessage(
+                            HttpMethod.Get,
                             $"{url}?t={DateTime.UtcNow.Ticks}"
                         );
 
-                    if (result.Length > 0)
+                    getRequest.Headers.Authorization =
+                        new AuthenticationHeaderValue(
+                            "Bearer",
+                            sessionToken
+                        );
+
+                    using var getResponse =
+                        await HttpClient.SendAsync(
+                            getRequest
+                        );
+
+                    if (getResponse.IsSuccessStatusCode)
                     {
-                        bytes = result;
-                        break;
+                        byte[] result =
+                            await getResponse.Content.ReadAsByteArrayAsync();
+
+                        if (result.Length > 0)
+                        {
+                            bytes = result;
+                            break;
+                        }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // El preview todavía no está disponible.
+                    Console.WriteLine(
+                        $"⚠️ Intento de preview {attempt + 1} " +
+                        $"para {machineId}: {ex.Message}"
+                    );
                 }
 
                 await Task.Delay(250);
             }
+
+            // ==========================================
+            // 3. VALIDAR IMAGEN
+            // ==========================================
 
             if (bytes == null || bytes.Length == 0)
             {
@@ -690,7 +750,7 @@ public static class AgentCard
             }
 
             // ==========================================
-            // 3. MOSTRAR IMAGEN
+            // 4. MOSTRAR IMAGEN
             // ==========================================
 
             await Application.Current.Dispatcher.InvokeAsync(

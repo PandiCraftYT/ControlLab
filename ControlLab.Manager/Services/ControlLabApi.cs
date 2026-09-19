@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using ControlLab.Manager.Models;
@@ -12,18 +13,108 @@ public class ControlLabApi
     private const string ServerUrl =
         "http://localhost:8080";
 
+    // =========================================================
+    // SESIÓN ACTUAL
+    // =========================================================
+    //
+    // El token vive solamente en memoria.
+    // No se guarda en disco.
+    //
+    private static string? _sessionToken;
+
+    // =========================================================
+    // CONSTRUCTOR
+    // =========================================================
+
     public ControlLabApi()
     {
-        _httpClient = new HttpClient();
+        _httpClient =
+            new HttpClient();
+
+        ApplySessionToken();
     }
 
-    // ==========================================
+    // =========================================================
+    // ESTABLECER SESIÓN
+    // =========================================================
+
+    public static void SetSessionToken(
+        string sessionToken)
+    {
+        if (string.IsNullOrWhiteSpace(sessionToken))
+        {
+            throw new ArgumentException(
+                "El token de sesión no puede estar vacío.",
+                nameof(sessionToken)
+            );
+        }
+
+        _sessionToken =
+            sessionToken.Trim();
+    }
+
+    // =========================================================
+    // LIMPIAR SESIÓN
+    // =========================================================
+
+    public static void ClearSessionToken()
+    {
+        _sessionToken = null;
+    }
+    // =========================================================
+    // OBTENER TOKEN DE SESIÓN
+    // =========================================================
+
+    public static string? GetSessionToken()
+    {
+        return _sessionToken;
+    }
+    // =========================================================
+    // SABER SI HAY SESIÓN
+    // =========================================================
+
+    public static bool HasSession =>
+        !string.IsNullOrWhiteSpace(
+            _sessionToken
+        );
+
+    // =========================================================
+    // APLICAR TOKEN
+    // =========================================================
+
+    private void ApplySessionToken()
+    {
+        _httpClient
+            .DefaultRequestHeaders
+            .Authorization = null;
+
+        if (
+            string.IsNullOrWhiteSpace(
+                _sessionToken
+            )
+        )
+        {
+            return;
+        }
+
+        _httpClient
+            .DefaultRequestHeaders
+            .Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    _sessionToken
+                );
+    }
+
+    // =========================================================
     // OBTENER EQUIPOS
-    // ==========================================
+    // =========================================================
 
     public async Task<AgentsResponse?> GetAgentsAsync()
     {
-        var response =
+        ApplySessionToken();
+
+        using var response =
             await _httpClient.GetAsync(
                 $"{ServerUrl}/api/agents"
             );
@@ -43,14 +134,16 @@ public class ControlLabApi
         );
     }
 
-    // ==========================================
+    // =========================================================
     // SOLICITAR CAPTURA
-    // ==========================================
+    // =========================================================
 
     public async Task<HttpResponseMessage>
         RequestScreenAsync(
             string machineId)
     {
+        ApplySessionToken();
+
         return await _httpClient.PostAsync(
             $"{ServerUrl}/api/agents/" +
             $"{Uri.EscapeDataString(machineId)}" +
@@ -59,14 +152,16 @@ public class ControlLabApi
         );
     }
 
-    // ==========================================
+    // =========================================================
     // OBTENER CAPTURA
-    // ==========================================
+    // =========================================================
 
     public async Task<byte[]> GetScreenAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         return await _httpClient.GetByteArrayAsync(
             $"{ServerUrl}/api/agents/" +
             $"{Uri.EscapeDataString(machineId)}" +
@@ -75,14 +170,16 @@ public class ControlLabApi
         );
     }
 
-    // ==========================================
+    // =========================================================
     // AUTORIZAR EQUIPO
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> AuthorizeAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -95,14 +192,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // REVOCAR AUTORIZACIÓN
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> RevokeAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -115,15 +214,17 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // CAMBIAR NOMBRE DEL EQUIPO
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> RenameAgentAsync(
         string machineId,
         string displayName,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         var payload =
             JsonSerializer.Serialize(
                 new
@@ -151,14 +252,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // BLOQUEAR SESIÓN
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> LockSessionAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -171,14 +274,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // PREVIEW
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> RequestPreviewAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -191,14 +296,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // INICIAR STREAM DE PANTALLA
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> StartScreenStreamAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -211,14 +318,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // DETENER STREAM DE PANTALLA
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> StopScreenStreamAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -231,14 +340,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // REINICIAR PC
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> RestartAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -251,14 +362,16 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // APAGAR PC
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> ShutdownAgentAsync(
         string machineId,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         using var response =
             await _httpClient.PostAsync(
                 $"{ServerUrl}/api/agents/" +
@@ -271,9 +384,9 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // CONTROL REMOTO
-    // ==========================================
+    // =========================================================
 
     public async Task<bool> SendRemoteInputAsync(
         string machineId,
@@ -285,6 +398,8 @@ public class ControlLabApi
         string? key = null,
         CancellationToken cancellationToken = default)
     {
+        ApplySessionToken();
+
         var payload =
             JsonSerializer.Serialize(
                 new
@@ -317,9 +432,9 @@ public class ControlLabApi
         return response.IsSuccessStatusCode;
     }
 
-    // ==========================================
+    // =========================================================
     // CERRAR
-    // ==========================================
+    // =========================================================
 
     public void Dispose()
     {

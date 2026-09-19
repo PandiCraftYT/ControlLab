@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using ControlLab.Manager.Server;
 using System.IO;
+using ControlLab.Manager.Services;
 namespace ControlLab.Manager;
 
 public sealed class ControlLabServer
@@ -26,7 +27,8 @@ public sealed class ControlLabServer
 
     private CancellationTokenSource? _cancellation;
     private readonly string _authToken;
-
+    private readonly string _sessionToken;
+    private readonly AuthenticationService _authentication;
     // =========================================================
     // COLA DE ENVÍO WEBSOCKET
     // =========================================================
@@ -35,11 +37,20 @@ public sealed class ControlLabServer
     private readonly SemaphoreSlim _webSocketSendLock =
         new(1, 1);
 
-    public ControlLabServer()
-    {
-        _authToken =
-            LoadAuthToken();
+public ControlLabServer(
+    string sessionToken,
+    AuthenticationService authentication)
+{
+    if (string.IsNullOrWhiteSpace(sessionToken))
+        throw new ArgumentException(
+            "El token de sesión no puede estar vacío.",
+            nameof(sessionToken)
+        );
 
+    _sessionToken = sessionToken;
+
+    _authentication = authentication;
+    _authToken = LoadAuthToken();
     _webSocket = new WebSocketHandler(
         _agents,
 
@@ -86,7 +97,9 @@ public sealed class ControlLabServer
     );
 
     _http = new HttpApiHandler(
-            () => _agents.Values,
+        () => _agents.Values,
+
+        IsSessionAuthenticated,
 
         machineId =>
             _screens.TryGetValue(
@@ -137,10 +150,67 @@ public sealed class ControlLabServer
                     ) &&
                     agent.Socket.State ==
                         System.Net.WebSockets.WebSocketState.Open
-            )
+            ),
+
+        IsSessionAuthenticated
     );
     }
 
+    private bool IsSessionAuthenticated(
+        HttpListenerContext context)
+    {
+        try
+        {
+            string? authorization =
+                context.Request.Headers["Authorization"];
+
+            if (string.IsNullOrWhiteSpace(
+                    authorization))
+            {
+                return false;
+            }
+
+            const string prefix =
+                "Bearer ";
+
+            if (
+                !authorization.StartsWith(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return false;
+            }
+
+            string providedToken =
+                authorization[
+                    prefix.Length..]
+                    .Trim();
+
+            if (string.IsNullOrWhiteSpace(
+                    providedToken))
+            {
+                return false;
+            }
+
+            if (!string.Equals(
+                    providedToken,
+                    _sessionToken,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return _authentication.IsSessionValid(
+                providedToken
+            );
+        }
+        catch
+        {
+            return false;
+        }
+    }
     public async Task StartAsync()
     {
         if (_listener.IsListening)

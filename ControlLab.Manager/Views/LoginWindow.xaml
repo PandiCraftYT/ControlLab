@@ -1,0 +1,373 @@
+<Window
+    x:Class="ControlLab.Manager.Views.LoginWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="ControlLab — Acceso"
+    Icon="/ControlLab.Manager;component/Assets/ControlLab.ico"
+    Width="1100"
+    Height="760"
+    MinWidth="1100"
+    MinHeight="760"
+    MaxWidth="1100"
+    MaxHeight="760"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="NoResize"
+    Background="#080A0E"
+    Foreground="#E8EDF5">
+
+    <Window.Resources>
+
+        <!-- ================================================= -->
+        <!-- BOTÓN PRINCIPAL -->
+        <!-- ================================================= -->
+
+        <Style
+            x:Key="PrimaryButton"
+            TargetType="Button">
+
+            <Setter
+                Property="Background"
+                Value="#1683F5"/>
+
+            <Setter
+                Property="Foreground"
+                Value="White"/>
+
+            <Setter
+                Property="BorderThickness"
+                Value="0"/>
+
+            <Setter
+                Property="FontSize"
+                Value="15"/>
+
+            <Setter
+                Property="FontWeight"
+                Value="SemiBold"/>
+
+            <Setter
+                Property="Cursor"
+                Value="Hand"/>
+
+            <Setter
+                Property="Height"
+                Value="50"/>
+
+            <Setter
+                Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate
+                        TargetType="Button">
+
+                        <Border
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="9">
+
+                            <ContentPresenter
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"/>
+
+                        </Border>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+            <Style.Triggers>
+
+                <Trigger
+                    Property="IsMouseOver"
+                    Value="True">
+
+                    <Setter
+                        Property="Background"
+                        Value="#2196F3"/>
+
+                </Trigger>
+
+                <Trigger
+                    Property="IsEnabled"
+                    Value="False">
+
+                    <Setter
+                        Property="Opacity"
+                        Value="0.45"/>
+
+                </Trigger>
+
+            </Style.Triggers>
+
+        </Style>
+
+        <!-- ================================================= -->
+        <!-- INPUT -->
+        <!-- ================================================= -->
+
+        <Style
+            x:Key="InputStyle"
+            TargetType="TextBox">
+
+            <Setter
+                Property="Height"
+                Value="48"/>
+
+            <Setter
+                Property="Padding"
+                Value="15,0"/>
+
+            <Setter
+                Property="FontSize"
+                Value="14"/>
+
+            <Setter
+                Property="VerticalContentAlignment"
+                Value="Center"/>
+
+            <Setter
+                Property="Foreground"
+                Value="#E8EDF5"/>
+
+            <Setter
+                Property="Background"
+                Value="#11151C"/>
+
+            <Setter
+                Property="BorderBrush"
+                Value="#273140"/>
+
+            <Setter
+                Property="BorderThickness"
+                Value="1"/>
+
+        </Style>
+
+    </Window.Resources>
+
+    <!-- ===================================================== -->
+    <!-- FONDO -->
+    <!-- ===================================================== -->
+
+    <Grid>
+
+        <!-- ================================================= -->
+        <!-- TARJETA CENTRAL -->
+        <!-- ================================================= -->
+
+        <Border
+            Width="520"
+            Padding="45,38,45,38"
+            Background="#0E1218"
+            BorderBrush="#202936"
+            BorderThickness="1"
+            CornerRadius="16"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+
+            <Grid>
+
+                <Grid.RowDefinitions>
+
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+
+                </Grid.RowDefinitions>
+
+                <!-- ================================================= -->
+                <!-- ICONO -->
+                <!-- ================================================= -->
+
+                <Border
+                    Width="72"
+                    Height="72"
+                    Background="#111E2D"
+                    BorderBrush="#24415E"
+                    BorderThickness="1"
+                    CornerRadius="15"
+                    HorizontalAlignment="Center">
+
+                    <Image
+                        Width="43"
+                        Height="43"
+                        Stretch="Uniform"
+                        Source="/ControlLab.Manager;component/Assets/ControlLab.ico"/>
+
+                </Border>
+
+                <!-- ================================================= -->
+                <!-- TÍTULO -->
+                <!-- ================================================= -->
+
+                <TextBlock
+                    Grid.Row="1"
+                    x:Name="TitleText"
+                    Margin="0,18,0,0"
+                    Text="ControlLab"
+                    FontSize="28"
+                    FontWeight="Bold"
+                    Foreground="#F5F7FA"
+                    HorizontalAlignment="Center"/>
+
+                <!-- ================================================= -->
+                <!-- SUBTÍTULO -->
+                <!-- ================================================= -->
+
+                <TextBlock
+                    Grid.Row="2"
+                    x:Name="SubtitleText"
+                    Margin="0,7,0,28"
+                    Text="Acceso al administrador"
+                    FontSize="14"
+                    Foreground="#8E9AAA"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap"/>
+
+                <!-- ================================================= -->
+                <!-- CAMPOS -->
+                <!-- ================================================= -->
+
+                <Grid
+                    Grid.Row="3">
+
+                    <Grid.RowDefinitions>
+
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+
+                    </Grid.RowDefinitions>
+
+                    <!-- ================================================= -->
+                    <!-- USUARIO -->
+                    <!-- ================================================= -->
+
+                    <StackPanel
+                        Grid.Row="0">
+
+                        <TextBlock
+                            Margin="0,0,0,8"
+                            Text="Usuario"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="#B7C0CC"/>
+
+                        <TextBox
+                            x:Name="UsernameTextBox"
+                            Style="{StaticResource InputStyle}"
+                            MaxLength="50"/>
+
+                    </StackPanel>
+
+                    <!-- ================================================= -->
+                    <!-- CONTRASEÑA -->
+                    <!-- ================================================= -->
+
+                    <StackPanel
+                        Grid.Row="1"
+                        Margin="0,18,0,0">
+
+                        <TextBlock
+                            Margin="0,0,0,8"
+                            Text="Contraseña"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="#B7C0CC"/>
+
+                        <PasswordBox
+                            x:Name="PasswordBox"
+                            Height="48"
+                            Padding="15,0"
+                            FontSize="14"
+                            VerticalContentAlignment="Center"
+                            Foreground="#E8EDF5"
+                            Background="#11151C"
+                            BorderBrush="#273140"
+                            BorderThickness="1"
+                            MaxLength="200"/>
+
+                    </StackPanel>
+
+                    <!-- ================================================= -->
+                    <!-- CONFIRMAR CONTRASEÑA -->
+                    <!-- ================================================= -->
+
+                    <StackPanel
+                        Grid.Row="2"
+                        x:Name="ConfirmPasswordPanel"
+                        Margin="0,18,0,0">
+
+                        <TextBlock
+                            Margin="0,0,0,8"
+                            Text="Confirmar contraseña"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="#B7C0CC"/>
+
+                        <PasswordBox
+                            x:Name="ConfirmPasswordBox"
+                            Height="48"
+                            Padding="15,0"
+                            FontSize="14"
+                            VerticalContentAlignment="Center"
+                            Foreground="#E8EDF5"
+                            Background="#11151C"
+                            BorderBrush="#273140"
+                            BorderThickness="1"
+                            MaxLength="200"/>
+
+                    </StackPanel>
+
+                </Grid>
+
+                <!-- ================================================= -->
+                <!-- MENSAJE -->
+                <!-- ================================================= -->
+
+                <TextBlock
+                    Grid.Row="4"
+                    x:Name="MessageText"
+                    Margin="0,13,0,0"
+                    FontSize="12"
+                    Foreground="#F97066"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed"/>
+
+                <!-- ================================================= -->
+                <!-- BOTÓN -->
+                <!-- ================================================= -->
+
+                <Button
+                    Grid.Row="5"
+                    x:Name="LoginButton"
+                    Margin="0,20,0,0"
+                    Content="INICIAR SESIÓN"
+                    Style="{StaticResource PrimaryButton}"
+                    Click="LoginButton_Click"/>
+
+                <!-- ================================================= -->
+                <!-- FOOTER -->
+                <!-- ================================================= -->
+
+                <TextBlock
+                    Grid.Row="6"
+                    Margin="0,18,0,0"
+                    Text="ControlLab • Administración del laboratorio"
+                    FontSize="10"
+                    Foreground="#566171"
+                    HorizontalAlignment="Center"/>
+
+            </Grid>
+
+        </Border>
+
+    </Grid>
+
+</Window>

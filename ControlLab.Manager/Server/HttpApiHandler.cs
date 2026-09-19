@@ -9,6 +9,7 @@ namespace ControlLab.Manager.Server;
 public sealed class HttpApiHandler
 {
     private readonly Func<IEnumerable<AgentConnection>> _getAgents;
+    private readonly Func<HttpListenerContext, bool> _isAuthenticated;
     private readonly ControlLabDatabase _database;
     private readonly Func<string, ScreenCaptureData?> _getScreen;
     private readonly Func<string, ScreenCaptureData?> _getPreview;
@@ -27,6 +28,7 @@ public sealed class HttpApiHandler
 
     public HttpApiHandler(
         Func<IEnumerable<AgentConnection>> getAgents,
+        Func<HttpListenerContext, bool> isAuthenticated,
         Func<string, ScreenCaptureData?> getScreen,
         Func<string, ScreenCaptureData?> getPreview,
         Func<string, ScreenCaptureData?> getStreamFrame,
@@ -43,14 +45,29 @@ public sealed class HttpApiHandler
             Task> sendRemoteInput,
         ControlLabDatabase database)
     {
-        _getAgents = getAgents;
-        _getScreen = getScreen;
-        _getPreview = getPreview;
-        _sendCommand = sendCommand;
+        _getAgents =
+            getAgents;
+
+        _isAuthenticated =
+            isAuthenticated;
+
+        _getScreen =
+            getScreen;
+
+        _getPreview =
+            getPreview;
+
+        _sendCommand =
+            sendCommand;
+
         _sendRemoteInput =
             sendRemoteInput;
-        _database = database;
-        _getStreamFrame = getStreamFrame;
+
+        _database =
+            database;
+
+        _getStreamFrame =
+            getStreamFrame;
     }
 
     public async Task HandleAsync(HttpListenerContext context)
@@ -59,6 +76,30 @@ public sealed class HttpApiHandler
         {
             string path =
                 context.Request.Url?.AbsolutePath ?? "/";
+
+
+            // ==========================================
+            // AUTENTICACIÓN DE LA API
+            // ==========================================
+
+            if (
+                path.StartsWith(
+                    "/api/",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                if (!_isAuthenticated(context))
+                {
+                    await SendErrorAsync(
+                        context,
+                        401,
+                        "Sesión no válida o expirada."
+                    );
+
+                    return;
+                }
+            }
 
             string method =
                 context.Request.HttpMethod;

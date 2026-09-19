@@ -12,10 +12,13 @@ public sealed class ScreenStreamHandler
 
     private readonly Func<string, bool> _isAgentOnline;
 
+    private readonly Func<HttpListenerContext, bool> _isAuthenticated;
+
     public ScreenStreamHandler(
         Func<string, ScreenCaptureData?> getStreamFrame,
         Func<string, bool> isAgentAuthorized,
-        Func<string, bool> isAgentOnline)
+        Func<string, bool> isAgentOnline,
+        Func<HttpListenerContext, bool> isAuthenticated)
     {
         _getStreamFrame =
             getStreamFrame;
@@ -25,6 +28,9 @@ public sealed class ScreenStreamHandler
 
         _isAgentOnline =
             isAgentOnline;
+
+        _isAuthenticated =
+            isAuthenticated;
     }
 
     // =========================================================
@@ -52,7 +58,20 @@ public sealed class ScreenStreamHandler
 
             return;
         }
+        // =====================================================
+        // VALIDAR SESIÓN DEL ADMINISTRADOR
+        // =====================================================
 
+        if (!_isAuthenticated(context))
+        {
+            await SendHttpErrorAsync(
+                context,
+                401,
+                "Sesión no válida o expirada."
+            );
+
+            return;
+        }
         // =====================================================
         // COMPROBAR AUTORIZACIÓN
         // =====================================================
