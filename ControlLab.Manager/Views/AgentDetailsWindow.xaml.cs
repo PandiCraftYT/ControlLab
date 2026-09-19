@@ -36,6 +36,8 @@ public partial class AgentDetailsWindow : Window
 
     private bool _keyboardControlEnabled;
 
+    private bool _authorized;
+
     private bool _leftMouseDown;
 
     private bool _rightMouseDown;
@@ -84,6 +86,9 @@ public partial class AgentDetailsWindow : Window
         _agent =
             agent;
 
+        _authorized =
+            agent?.Authorized ?? false;
+
         _api =
             api;
 
@@ -95,7 +100,24 @@ public partial class AgentDetailsWindow : Window
         Loaded +=
             async (_, _) =>
             {
-                await StartStreamAsync();
+                if (_authorized && IsOnline())
+                {
+                    await StartStreamAsync();
+                }
+                else
+                {
+                    StreamStatusText.Text =
+                        "  AUTORIZACIÓN REQUERIDA";
+
+                    StreamStatusText.Foreground =
+                        new SolidColorBrush(
+                            Color.FromRgb(
+                                255,
+                                196,
+                                77
+                            )
+                        );
+                }
             };
 
         Closed +=
@@ -157,19 +179,24 @@ public partial class AgentDetailsWindow : Window
                 : Visibility.Visible;
 
         RemoteControlButton.IsEnabled =
-            online;
+            online && _authorized;
 
         KeyboardButton.IsEnabled =
-            online;
+            online && _authorized;
 
         LockSessionButton.IsEnabled =
-            online;
+            online && _authorized;
 
         RestartButton.IsEnabled =
-            online;
+            online && _authorized;
 
         ShutdownButton.IsEnabled =
-            online;
+            online && _authorized;
+
+        AuthorizationButton.Content =
+            _authorized
+                ? "🛡  Autorizado"
+                : "🛡  Autorizar";
 
         if (!online)
         {
@@ -1643,6 +1670,158 @@ public partial class AgentDetailsWindow : Window
 
             ShutdownButton.Content =
                 "⏻  Apagar";
+        }
+    }
+
+    private async void AuthorizationButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        try
+        {
+            AuthorizationButton.IsEnabled =
+                false;
+
+            if (_authorized)
+            {
+                var result =
+                    MessageBox.Show(
+                        $"¿Deseas revocar la autorización de {GetDisplayName()}?",
+                        "Revocar autorización",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning
+                    );
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+
+                bool success =
+                    await _api.RevokeAgentAsync(
+                        _machineId
+                    );
+
+                if (!success)
+                {
+                    MessageBox.Show(
+                        "No se pudo revocar la autorización.",
+                        "ControlLab",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning
+                    );
+
+                    return;
+                }
+
+                _authorized = false;
+
+                if (_streamStarted)
+                {
+                    await StopStreamAsync();
+                }
+
+                _remoteControlEnabled = false;
+                _keyboardControlEnabled = false;
+                ReleasePressedMouseButtons();
+                ReleasePressedRemoteKeys();
+
+                RemoteInputOverlay.Visibility =
+                    Visibility.Collapsed;
+
+                RemoteControlActiveBadge.Visibility =
+                    Visibility.Collapsed;
+
+                RemoteControlButton.Content =
+                    "🖱  Control remoto";
+
+                KeyboardButton.Content =
+                    "⌨  Teclado";
+
+                StreamStatusText.Text =
+                    "  AUTORIZACIÓN REQUERIDA";
+
+                StreamStatusText.Foreground =
+                    new SolidColorBrush(
+                        Color.FromRgb(
+                            255,
+                            196,
+                            77
+                        )
+                    );
+            }
+            else
+            {
+                var result =
+                    MessageBox.Show(
+                        $"¿Deseas autorizar el equipo {GetDisplayName()}?",
+                        "Autorizar equipo",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Information
+                    );
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+
+                bool success =
+                    await _api.AuthorizeAgentAsync(
+                        _machineId
+                    );
+
+                if (!success)
+                {
+                    MessageBox.Show(
+                        "No se pudo autorizar el equipo.",
+                        "ControlLab",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning
+                    );
+
+                    return;
+                }
+
+                _authorized = true;
+
+                if (IsOnline() && !_streamStarted)
+                {
+                    await StartStreamAsync();
+                }
+            }
+
+            AuthorizationButton.Content =
+                _authorized
+                    ? "🛡  Autorizado"
+                    : "🛡  Autorizar";
+
+            bool online =
+                IsOnline();
+
+            RemoteControlButton.IsEnabled =
+                online && _authorized;
+
+            KeyboardButton.IsEnabled =
+                online && _authorized;
+
+            LockSessionButton.IsEnabled =
+                online && _authorized;
+
+            RestartButton.IsEnabled =
+                online && _authorized;
+
+            ShutdownButton.IsEnabled =
+                online && _authorized;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error cambiando la autorización:\n\n{ex.Message}",
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+        finally
+        {
+            AuthorizationButton.IsEnabled =
+                true;
         }
     }
 

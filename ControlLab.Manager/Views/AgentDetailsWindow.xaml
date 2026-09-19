@@ -14,7 +14,6 @@
         PreviewKeyUp="Window_PreviewKeyUp">
 
     <Window.Resources>
-
         <!-- ================================================= -->
         <!-- COLORES -->
         <!-- ================================================= -->
@@ -134,6 +133,25 @@
             </Style.Triggers>
 
         </Style>
+
+    <Style
+        x:Key="AuthorizationButtonStyle"
+        TargetType="Button"
+        BasedOn="{StaticResource ControlButton}">
+
+        <Setter
+            Property="Background"
+            Value="#16352B"/>
+
+        <Setter
+            Property="BorderBrush"
+            Value="#267A5A"/>
+
+        <Setter
+            Property="Foreground"
+            Value="#32D583"/>
+
+    </Style>
 
         <!-- ================================================= -->
         <!-- BOTÓN CONTROL REMOTO -->
@@ -667,6 +685,14 @@
                             Width="110"
                             Style="{StaticResource ShutdownButtonStyle}"
                             Click="ShutdownButton_Click"/>
+
+                        <Button
+                        x:Name="AuthorizationButton"
+                        Content="🛡  Autorizar"
+                        Width="125"
+                        Margin="8,0,0,0"
+                        Style="{StaticResource AuthorizationButtonStyle}"
+                        Click="AuthorizationButton_Click"/>
 
                     </WrapPanel>
 
