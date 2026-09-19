@@ -125,7 +125,7 @@ public ControlLabServer(
         SendCommandAsync,
 
         SendRemoteInputAsync,
-
+        DeleteAgentAsync,
         _database
     );
 
@@ -327,6 +327,79 @@ public ControlLabServer(
             {
             }
         }
+    }
+    // =========================================================
+    // ELIMINAR EQUIPO COMPLETAMENTE
+    // =========================================================
+
+    private async Task DeleteAgentAsync(
+        string machineId)
+    {
+        // -----------------------------------------
+        // ELIMINAR CAPTURAS EN MEMORIA
+        // -----------------------------------------
+
+        _screens.TryRemove(
+            machineId,
+            out _
+        );
+
+        _previews.TryRemove(
+            machineId,
+            out _
+        );
+
+        _streamFrames.TryRemove(
+            machineId,
+            out _
+        );
+
+        // -----------------------------------------
+        // ELIMINAR CONEXIÓN DEL REGISTRY
+        // -----------------------------------------
+
+        if (
+            _agents.TryRemove(
+                machineId,
+                out AgentConnection? agent
+            )
+        )
+        {
+            if (agent?.Socket != null)
+            {
+                try
+                {
+                    if (
+                        agent.Socket.State ==
+                        WebSocketState.Open
+                    )
+                    {
+                        await agent.Socket.CloseAsync(
+                            WebSocketCloseStatus.NormalClosure,
+                            "Equipo eliminado del laboratorio.",
+                            CancellationToken.None
+                        );
+                    }
+                }
+                catch
+                {
+                    // La conexión pudo haberse cerrado
+                    // mientras se eliminaba el equipo.
+                }
+
+                try
+                {
+                    agent.Socket.Dispose();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        Console.WriteLine(
+            $"🗑️ Equipo eliminado completamente: {machineId}"
+        );
     }
 
     private async Task SendCommandAsync(

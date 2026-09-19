@@ -154,6 +154,25 @@
     </Style>
 
         <!-- ================================================= -->
+        <!-- BOTÓN ELIMINAR -->
+        <!-- ================================================= -->
+
+        <Style x:Key="DeleteButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource ControlButton}">
+
+            <Setter Property="Background"
+                    Value="#35191B"/>
+
+            <Setter Property="BorderBrush"
+                    Value="#8F3D3D"/>
+
+            <Setter Property="Foreground"
+                    Value="#FF7070"/>
+
+        </Style>
+
+        <!-- ================================================= -->
         <!-- BOTÓN CONTROL REMOTO -->
         <!-- ================================================= -->
 
@@ -687,12 +706,22 @@
                             Click="ShutdownButton_Click"/>
 
                         <Button
-                        x:Name="AuthorizationButton"
-                        Content="🛡  Autorizar"
-                        Width="125"
-                        Margin="8,0,0,0"
-                        Style="{StaticResource AuthorizationButtonStyle}"
-                        Click="AuthorizationButton_Click"/>
+                            x:Name="AuthorizationButton"
+                            Content="🛡  Autorizar"
+                            Width="125"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource AuthorizationButtonStyle}"
+                            Click="AuthorizationButton_Click"/>
+
+                        <!-- ELIMINAR EQUIPO -->
+
+                        <Button
+                            x:Name="DeleteAgentButton"
+                            Content="🗑  Eliminar"
+                            Width="120"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource DeleteButtonStyle}"
+                            Click="DeleteAgentButton_Click"/>
 
                     </WrapPanel>
 

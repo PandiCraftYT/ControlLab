@@ -110,7 +110,9 @@ public partial class App : Application
             // =================================================
 
             var mainWindow =
-                new MainWindow();
+                new MainWindow(
+                    _username ?? "Administrador"
+                );
 
             MainWindow =
                 mainWindow;

@@ -14,6 +14,7 @@ public sealed class HttpApiHandler
     private readonly Func<string, ScreenCaptureData?> _getScreen;
     private readonly Func<string, ScreenCaptureData?> _getPreview;
     private readonly Func<string, ScreenCaptureData?> _getStreamFrame;
+    private readonly Func<string, Task> _deleteAgent;
     private readonly Func<HttpListenerContext, string, string, Task> _sendCommand;
     private readonly Func<
         HttpListenerContext,
@@ -43,6 +44,7 @@ public sealed class HttpApiHandler
             int,
             string?,
             Task> sendRemoteInput,
+        Func<string, Task> deleteAgent,
         ControlLabDatabase database)
     {
         _getAgents =
@@ -65,6 +67,9 @@ public sealed class HttpApiHandler
 
         _database =
             database;
+
+        _deleteAgent =
+            deleteAgent;
 
         _getStreamFrame =
             getStreamFrame;
@@ -456,6 +461,51 @@ public sealed class HttpApiHandler
                         success = true,
                         machineId,
                         authorized = false
+                    }
+                );
+
+                return;
+            }
+            // ==========================================
+            // ELIMINAR EQUIPO
+            // ==========================================
+
+            if (
+                method == "DELETE" &&
+                action == "delete"
+            )
+            {
+                bool success =
+                    _database.DeleteAgent(
+                        machineId
+                    );
+
+                if (!success)
+                {
+                    await SendErrorAsync(
+                        context,
+                        404,
+                        "Equipo no encontrado."
+                    );
+
+                    return;
+                }
+
+                // ------------------------------------------
+                // LIMPIAR CONEXIÓN Y DATOS EN MEMORIA
+                // ------------------------------------------
+
+                await _deleteAgent(
+                    machineId
+                );
+
+                await SendJsonAsync(
+                    context,
+                    new
+                    {
+                        success = true,
+                        machineId,
+                        deleted = true
                     }
                 );
 

@@ -13,6 +13,7 @@ namespace ControlLab.Manager;
 
 public partial class MainWindow : Window
 {
+    private readonly string _username;
     // ==========================================
     // API
     // ==========================================
@@ -29,9 +30,18 @@ public partial class MainWindow : Window
     // CONSTRUCTOR
     // ==========================================
 
-    public MainWindow()
+    public MainWindow(
+        string username)
     {
+        _username =
+            string.IsNullOrWhiteSpace(username)
+                ? "Administrador"
+                : username;
+
         InitializeComponent();
+
+        UsuarioText.Text =
+            _username;
 
         // ==========================================
         // TIMER

@@ -61,14 +61,7 @@ public class ControlLabApi
     {
         _sessionToken = null;
     }
-    // =========================================================
-    // OBTENER TOKEN DE SESIÓN
-    // =========================================================
 
-    public static string? GetSessionToken()
-    {
-        return _sessionToken;
-    }
     // =========================================================
     // SABER SI HAY SESIÓN
     // =========================================================
@@ -77,6 +70,15 @@ public class ControlLabApi
         !string.IsNullOrWhiteSpace(
             _sessionToken
         );
+
+    // =========================================================
+    // OBTENER TOKEN DE SESIÓN
+    // =========================================================
+
+    public static string? GetSessionToken()
+    {
+        return _sessionToken;
+    }
 
     // =========================================================
     // APLICAR TOKEN
@@ -208,6 +210,27 @@ public class ControlLabApi
                 $"{Uri.EscapeDataString(machineId)}" +
                 "/revoke",
                 null,
+                cancellationToken
+            );
+
+        return response.IsSuccessStatusCode;
+    }
+
+    // =========================================================
+    // ELIMINAR EQUIPO
+    // =========================================================
+
+    public async Task<bool> DeleteAgentAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        ApplySessionToken();
+
+        using var response =
+            await _httpClient.DeleteAsync(
+                $"{ServerUrl}/api/agents/" +
+                $"{Uri.EscapeDataString(machineId)}" +
+                "/delete",
                 cancellationToken
             );
 

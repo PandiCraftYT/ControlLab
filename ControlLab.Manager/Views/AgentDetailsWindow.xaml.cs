@@ -1973,7 +1973,125 @@ public partial class AgentDetailsWindow : Window
                 StringComparison.OrdinalIgnoreCase
             );
     }
+    // =========================================================
+    // ELIMINAR EQUIPO
+    // =========================================================
 
+    private async void DeleteAgentButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var result =
+            MessageBox.Show(
+                $"¿Deseas eliminar definitivamente el equipo " +
+                $"{GetDisplayName()}?\n\n" +
+                "El equipo será eliminado del laboratorio y " +
+                "perderá su autorización.\n\n" +
+                "Si vuelve a registrarse posteriormente, " +
+                "deberá autorizarse nuevamente.",
+                "Eliminar equipo",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning
+            );
+
+        if (
+            result !=
+            MessageBoxResult.Yes
+        )
+        {
+            return;
+        }
+
+        try
+        {
+            DeleteAgentButton.IsEnabled =
+                false;
+
+            DeleteAgentButton.Content =
+                "Eliminando...";
+
+            // -----------------------------------------
+            // DETENER STREAM
+            // -----------------------------------------
+
+            if (_streamStarted)
+            {
+                await StopStreamAsync();
+            }
+
+            // -----------------------------------------
+            // DESACTIVAR CONTROL REMOTO
+            // -----------------------------------------
+
+            _remoteControlEnabled =
+                false;
+
+            _keyboardControlEnabled =
+                false;
+
+            ReleasePressedMouseButtons();
+
+            ReleasePressedRemoteKeys();
+
+            // -----------------------------------------
+            // ELIMINAR DEL SERVIDOR
+            // -----------------------------------------
+
+            bool success =
+                await _api.DeleteAgentAsync(
+                    _machineId
+                );
+
+            if (!success)
+            {
+                MessageBox.Show(
+                    "No se pudo eliminar el equipo.\n\n" +
+                    "El servidor no pudo completar la operación.",
+                    "ControlLab",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning
+                );
+
+                return;
+            }
+
+            Console.WriteLine(
+                $"🗑️ Equipo eliminado: {_machineId}"
+            );
+
+            MessageBox.Show(
+                $"El equipo {GetDisplayName()} " +
+                "ha sido eliminado correctamente.",
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+
+            // -----------------------------------------
+            // CERRAR DETALLES
+            // -----------------------------------------
+
+            Close();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "Error eliminando el equipo:\n\n" +
+                ex.Message,
+                "ControlLab",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+        finally
+        {
+            DeleteAgentButton.IsEnabled =
+                true;
+
+            DeleteAgentButton.Content =
+                "🗑  Eliminar";
+        }
+    }
     // =========================================================
     // CERRAR
     // =========================================================

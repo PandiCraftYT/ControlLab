@@ -570,7 +570,48 @@ public sealed class ControlLabDatabase
             false
         );
     }
+    // =========================================================
+    // ELIMINAR EQUIPO
+    // =========================================================
 
+    public bool DeleteAgent(string machineId)
+    {
+        if (string.IsNullOrWhiteSpace(machineId))
+            return false;
+
+        using var connection =
+            new SqliteConnection(
+                _connectionString
+            );
+
+        connection.Open();
+
+        using var command =
+            connection.CreateCommand();
+
+        command.CommandText =
+            """
+            DELETE FROM Agents
+            WHERE MachineId = $machineId;
+            """;
+
+        command.Parameters.AddWithValue(
+            "$machineId",
+            machineId
+        );
+
+        int affectedRows =
+            command.ExecuteNonQuery();
+
+        if (affectedRows > 0)
+        {
+            Console.WriteLine(
+                $"🗑️ Equipo eliminado de SQLite: {machineId}"
+            );
+        }
+
+        return affectedRows > 0;
+    }
     // ==========================================
     // CAMBIAR AUTORIZACIÓN
     // ==========================================
