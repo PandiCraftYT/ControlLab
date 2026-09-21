@@ -699,10 +699,52 @@
                         </StackPanel>
 
 
+                        <!-- BUSCADOR + ESTADO -->
+
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+
+                        <!-- BUSCADOR -->
+
+                        <Border
+                            Width="240"
+                            Height="34"
+                            Background="#0D151D"
+                            BorderBrush="#263645"
+                            BorderThickness="1"
+                            CornerRadius="9"
+                            Margin="0,0,10,0">
+
+                            <Grid>
+
+                                <TextBlock
+                                    Text="🔎"
+                                    FontSize="13"
+                                    Foreground="#65788D"
+                                    VerticalAlignment="Center"
+                                    Margin="10,0,0,0"/>
+
+                                <TextBox
+                                    x:Name="SearchBox"
+                                    Margin="34,0,8,0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="White"
+                                    FontSize="11"
+                                    VerticalContentAlignment="Center"
+                                    TextChanged="SearchBox_TextChanged"
+                                    ToolTip="Buscar por nombre, equipo o hostname"/>
+
+                            </Grid>
+
+                        </Border>
+
+
                         <!-- ESTADO -->
 
                         <Border
-                            Grid.Column="1"
                             Background="#121C25"
                             BorderBrush="#263645"
                             BorderThickness="1"
@@ -729,6 +771,8 @@
                             </StackPanel>
 
                         </Border>
+
+                    </StackPanel>
 
                     </Grid>
 

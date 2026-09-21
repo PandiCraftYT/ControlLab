@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,11 +15,15 @@ namespace ControlLab.Manager;
 public partial class MainWindow : Window
 {
     private readonly string _username;
+
     // ==========================================
     // API
     // ==========================================
 
     private readonly ControlLabApi _api = new();
+
+    private List<AgentInfo> _allAgents =
+        new();
 
     // ==========================================
     // ACTUALIZACIÓN AUTOMÁTICA
@@ -92,12 +97,6 @@ public partial class MainWindow : Window
                 return;
 
             // ==========================================
-            // LIMPIAR LISTA ACTUAL
-            // ==========================================
-
-            AgentsPanel.Children.Clear();
-
-            // ==========================================
             // OBTENER EQUIPOS
             // ==========================================
 
@@ -112,20 +111,18 @@ public partial class MainWindow : Window
                     .ToList();
 
             // ==========================================
-            // CREAR TARJETAS
+            // GUARDAR TODOS LOS EQUIPOS
             // ==========================================
 
-            foreach (
-                var agent
-                in agents
-            )
-            {
-                AgentsPanel.Children.Add(
-                    CreateAgentCard(
-                        agent
-                    )
-                );
-            }
+            _allAgents =
+                agents;
+
+            // ==========================================
+            // ACTUALIZAR TARJETAS
+            // RESPETANDO EL BUSCADOR
+            // ==========================================
+
+            RefreshAgentCards();
 
             // ==========================================
             // ESTADÍSTICAS
@@ -182,6 +179,83 @@ public partial class MainWindow : Window
                 $"❌ Error consultando servidor: {ex.Message}"
             );
         }
+    }
+
+    // ==========================================
+    // ACTUALIZAR TARJETAS
+    // ==========================================
+
+    private void RefreshAgentCards()
+    {
+        string search =
+            SearchBox.Text?.Trim() ?? "";
+
+        IEnumerable<AgentInfo> filtered;
+
+        // ==========================================
+        // SIN BÚSQUEDA
+        // ==========================================
+
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            filtered =
+                _allAgents;
+        }
+        else
+        {
+            // ==========================================
+            // FILTRAR
+            // ==========================================
+
+            filtered =
+                _allAgents.Where(
+                    agent =>
+                        agent.MachineId.Contains(
+                            search,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                        ||
+                        agent.DisplayName.Contains(
+                            search,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                        ||
+                        agent.Hostname.Contains(
+                            search,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                );
+        }
+
+        // ==========================================
+        // LIMPIAR TARJETAS
+        // ==========================================
+
+        AgentsPanel.Children.Clear();
+
+        // ==========================================
+        // CREAR TARJETAS FILTRADAS
+        // ==========================================
+
+        foreach (var agent in filtered)
+        {
+            AgentsPanel.Children.Add(
+                CreateAgentCard(
+                    agent
+                )
+            );
+        }
+    }
+
+    // ==========================================
+    // BUSCADOR
+    // ==========================================
+
+    private void SearchBox_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        RefreshAgentCards();
     }
 
     // ==========================================
