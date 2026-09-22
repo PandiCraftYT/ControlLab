@@ -15,6 +15,21 @@ public sealed class HttpApiHandler
     private readonly Func<string, ScreenCaptureData?> _getPreview;
     private readonly Func<string, ScreenCaptureData?> _getStreamFrame;
     private readonly Func<string, Task> _deleteAgent;
+    private readonly Func<HttpListenerContext, string?> _getAuthenticatedUsername;
+    private bool IsAgentAuthorized(string machineId)
+    {
+        var registeredAgent =
+            _database.GetAgents()
+                .FirstOrDefault(
+                    agent =>
+                        agent.MachineId.Equals(
+                            machineId,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                );
+
+        return registeredAgent?.Authorized ?? false;
+    }
     private readonly Func<HttpListenerContext, string, string, Task> _sendCommand;
     private readonly Func<
         HttpListenerContext,
@@ -45,7 +60,8 @@ public sealed class HttpApiHandler
             string?,
             Task> sendRemoteInput,
         Func<string, Task> deleteAgent,
-        ControlLabDatabase database)
+        ControlLabDatabase database,
+        Func<HttpListenerContext, string?> getAuthenticatedUsername)
     {
         _getAgents =
             getAgents;
@@ -73,6 +89,37 @@ public sealed class HttpApiHandler
 
         _getStreamFrame =
             getStreamFrame;
+        
+        _getAuthenticatedUsername =
+            getAuthenticatedUsername;
+    }
+
+    private string GetAuthenticatedUsername(HttpListenerContext context)
+    {
+        string? authorization =
+            context.Request.Headers["Authorization"];
+
+        if (string.IsNullOrWhiteSpace(authorization))
+            return "Desconocido";
+
+        const string prefix = "Bearer ";
+
+        if (!authorization.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "Desconocido";
+        }
+
+        string token =
+            authorization[prefix.Length..].Trim();
+
+        if (string.IsNullOrWhiteSpace(token))
+            return "Desconocido";
+
+        // El servidor ya validó previamente la sesión.
+        // Aquí solo necesitamos identificar al usuario.
+        return "Administrador";
     }
 
     public async Task HandleAsync(HttpListenerContext context)
@@ -241,6 +288,14 @@ public sealed class HttpApiHandler
                     "RESTART_PC"
                 );
 
+                _database.AddAuditLog(
+                    _getAuthenticatedUsername(context) ?? "Desconocido",
+                    machineId,
+                    "RESTART_PC",
+                    "SUCCESS",
+                    "Solicitud de reinicio enviada al equipo."
+                );
+
                 return;
             }
             // ==========================================
@@ -324,6 +379,14 @@ public sealed class HttpApiHandler
                     "LOCK_SESSION"
                 );
 
+                _database.AddAuditLog(
+                    _getAuthenticatedUsername(context) ?? "Desconocido",
+                    machineId,
+                    "LOCK_SESSION",
+                    "SUCCESS",
+                    "Solicitud de bloqueo enviada al equipo."
+                );
+
                 return;
             }
             if (
@@ -389,6 +452,14 @@ public sealed class HttpApiHandler
                     "SHUTDOWN_PC"
                 );
 
+                _database.AddAuditLog(
+                    _getAuthenticatedUsername(context) ?? "Desconocido",
+                    machineId,
+                    "SHUTDOWN_PC",
+                    "SUCCESS",
+                    "Solicitud de apagado enviada al equipo."
+                );
+
                 return;
             }
             // ==========================================
@@ -407,6 +478,14 @@ public sealed class HttpApiHandler
 
                 if (!success)
                 {
+                    _database.AddAuditLog(
+                        _getAuthenticatedUsername(context) ?? "Desconocido",
+                        machineId,
+                        "AUTHORIZE_AGENT",
+                        "DENIED",
+                        "El equipo no fue encontrado."
+                    );
+
                     await SendErrorAsync(
                         context,
                         404,
@@ -445,6 +524,14 @@ public sealed class HttpApiHandler
 
                 if (!success)
                 {
+                    _database.AddAuditLog(
+                        _getAuthenticatedUsername(context) ?? "Desconocido",
+                        machineId,
+                        "REVOKE_AGENT",
+                        "DENIED",
+                        "El equipo no fue encontrado."
+                    );
+
                     await SendErrorAsync(
                         context,
                         404,
@@ -453,6 +540,14 @@ public sealed class HttpApiHandler
 
                     return;
                 }
+
+                _database.AddAuditLog(
+                    _getAuthenticatedUsername(context) ?? "Desconocido",
+                    machineId,
+                    "REVOKE_AGENT",
+                    "SUCCESS",
+                    "Autorización revocada."
+                );
 
                 await SendJsonAsync(
                     context,
@@ -482,6 +577,14 @@ public sealed class HttpApiHandler
 
                 if (!success)
                 {
+                    _database.AddAuditLog(
+                        _getAuthenticatedUsername(context) ?? "Desconocido",
+                        machineId,
+                        "DELETE_AGENT",
+                        "DENIED",
+                        "El equipo no fue encontrado."
+                    );
+
                     await SendErrorAsync(
                         context,
                         404,
@@ -490,6 +593,14 @@ public sealed class HttpApiHandler
 
                     return;
                 }
+
+                _database.AddAuditLog(
+                    _getAuthenticatedUsername(context) ?? "Desconocido",
+                    machineId,
+                    "DELETE_AGENT",
+                    "SUCCESS",
+                    "Equipo eliminado."
+                );
 
                 // ------------------------------------------
                 // LIMPIAR CONEXIÓN Y DATOS EN MEMORIA
@@ -554,6 +665,17 @@ public sealed class HttpApiHandler
                 (action == "ping" || action == "screen")
             )
             {
+                if (!IsAgentAuthorized(machineId))
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+
+                    return;
+                }
+
                 string command =
                     action == "ping"
                         ? "PING"
@@ -564,6 +686,17 @@ public sealed class HttpApiHandler
                     machineId,
                     command
                 );
+
+                if (command == "SCREEN_CAPTURE")
+                {
+                    _database.AddAuditLog(
+                        _getAuthenticatedUsername(context) ?? "Desconocido",
+                        machineId,
+                        "SCREEN_CAPTURE",
+                        "SUCCESS",
+                        "Solicitud de captura de pantalla enviada."
+                    );
+                }
 
                 return;
             }
@@ -636,6 +769,14 @@ public sealed class HttpApiHandler
                     context,
                     machineId,
                     "PREVIEW_CAPTURE"
+                );
+
+                _database.AddAuditLog(
+                    _getAuthenticatedUsername(context) ?? "Desconocido",
+                    machineId,
+                    "PREVIEW_CAPTURE",
+                    "SUCCESS",
+                    "Solicitud de preview enviada."
                 );
 
                 return;
@@ -721,6 +862,14 @@ public sealed class HttpApiHandler
                         "START_SCREEN_STREAM"
                     );
 
+                    _database.AddAuditLog(
+                        _getAuthenticatedUsername(context) ?? "Desconocido",
+                        machineId,
+                        "START_SCREEN_STREAM",
+                        "SUCCESS",
+                        "Transmisión de pantalla iniciada."
+                    );
+
                     return;
                 }
 
@@ -736,10 +885,29 @@ public sealed class HttpApiHandler
                     )
                 )
                 {
+                    if (!IsAgentAuthorized(machineId))
+                    {
+                        await SendErrorAsync(
+                            context,
+                            403,
+                            "El equipo no está autorizado."
+                        );
+
+                        return;
+                    }
+
                     await _sendCommand(
                         context,
                         machineId,
                         "STOP_SCREEN_STREAM"
+                    );
+
+                    _database.AddAuditLog(
+                        _getAuthenticatedUsername(context) ?? "Desconocido",
+                        machineId,
+                        "STOP_SCREEN_STREAM",
+                        "SUCCESS",
+                        "Transmisión de pantalla detenida."
                     );
 
                     return;
@@ -751,10 +919,21 @@ public sealed class HttpApiHandler
 
             if (
                 method == "GET" &&
-                action == "stream"
+                action == "screen"
             )
             {
-                await SendStreamFrameAsync(
+                if (!IsAgentAuthorized(machineId))
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+
+                    return;
+                }
+
+                await SendScreenAsync(
                     context,
                     machineId
                 );
@@ -767,10 +946,21 @@ public sealed class HttpApiHandler
 
             if (
                 method == "GET" &&
-                action == "screen"
+                action == "stream"
             )
             {
-                await SendScreenAsync(
+                if (!IsAgentAuthorized(machineId))
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+
+                    return;
+                }
+
+                await SendStreamFrameAsync(
                     context,
                     machineId
                 );
@@ -786,6 +976,17 @@ public sealed class HttpApiHandler
                 action == "preview"
             )
             {
+                if (!IsAgentAuthorized(machineId))
+                {
+                    await SendErrorAsync(
+                        context,
+                        403,
+                        "El equipo no está autorizado."
+                    );
+
+                    return;
+                }
+
                 await SendPreviewAsync(
                     context,
                     machineId
@@ -929,6 +1130,14 @@ public sealed class HttpApiHandler
 
         if (!success)
         {
+            _database.AddAuditLog(
+                _getAuthenticatedUsername(context) ?? "Desconocido",
+                machineId,
+                "RENAME_AGENT",
+                "DENIED",
+                "No se pudo cambiar el nombre. El equipo puede no existir o el nombre ya estar en uso."
+            );
+
             await SendErrorAsync(
                 context,
                 409,
@@ -938,6 +1147,14 @@ public sealed class HttpApiHandler
 
             return;
         }
+
+        _database.AddAuditLog(
+            _getAuthenticatedUsername(context) ?? "Desconocido",
+            machineId,
+            "RENAME_AGENT",
+            "SUCCESS",
+            $"Nombre cambiado a: {displayName}"
+        );
 
         // ==========================================
         // RESPUESTA
@@ -1461,6 +1678,14 @@ public sealed class HttpApiHandler
             request.Button,
             request.Delta,
             request.Key
+        );
+
+        _database.AddAuditLog(
+            _getAuthenticatedUsername(context) ?? "Desconocido",
+            machineId,
+            "REMOTE_INPUT",
+            "SUCCESS",
+            $"Acción de control remoto: {action}"
         );
     }
     // ==========================================

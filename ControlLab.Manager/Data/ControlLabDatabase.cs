@@ -34,6 +34,88 @@ public sealed class ControlLabDatabase
     }
 
     // ==========================================
+    // REGISTRAR EVENTO DE AUDITORÍA
+    // ==========================================
+
+    public void AddAuditLog(
+        string username,
+        string? machineId,
+        string action,
+        string result,
+        string? details = null)
+    {
+        using var connection =
+            new SqliteConnection(
+                _connectionString
+            );
+
+        connection.Open();
+
+        using var command =
+            connection.CreateCommand();
+
+        command.CommandText =
+            """
+            INSERT INTO AuditLogs
+            (
+                Timestamp,
+                Username,
+                MachineId,
+                Action,
+                Result,
+                Details
+            )
+            VALUES
+            (
+                $timestamp,
+                $username,
+                $machineId,
+                $action,
+                $result,
+                $details
+            );
+            """;
+
+        command.Parameters.AddWithValue(
+            "$timestamp",
+            DateTime.UtcNow.ToString("O")
+        );
+
+        command.Parameters.AddWithValue(
+            "$username",
+            string.IsNullOrWhiteSpace(username)
+                ? "Desconocido"
+                : username
+        );
+
+        command.Parameters.AddWithValue(
+            "$machineId",
+            string.IsNullOrWhiteSpace(machineId)
+                ? DBNull.Value
+                : machineId
+        );
+
+        command.Parameters.AddWithValue(
+            "$action",
+            action
+        );
+
+        command.Parameters.AddWithValue(
+            "$result",
+            result
+        );
+
+        command.Parameters.AddWithValue(
+            "$details",
+            string.IsNullOrWhiteSpace(details)
+                ? DBNull.Value
+                : details
+        );
+
+        command.ExecuteNonQuery();
+    }
+
+    // ==========================================
     // CONTAR EQUIPOS REGISTRADOS
     // ==========================================
 
@@ -94,6 +176,8 @@ public sealed class ControlLabDatabase
         EnsureDisplayNameColumn(connection);
 
         EnsureAuthorizedColumn(connection);
+
+        EnsureAuditLogsTable(connection);
     }
 
     // ==========================================
@@ -202,6 +286,32 @@ public sealed class ControlLabDatabase
             "INTEGER NOT NULL DEFAULT 1;";
 
         alterCommand.ExecuteNonQuery();
+    }
+
+    // ==========================================
+    // ASEGURAR TABLA DE AUDITORÍA
+    // ==========================================
+
+    private void EnsureAuditLogsTable(
+        SqliteConnection connection)
+    {
+        using var command =
+            connection.CreateCommand();
+
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS AuditLogs (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Timestamp TEXT NOT NULL,
+                Username TEXT NOT NULL,
+                MachineId TEXT,
+                Action TEXT NOT NULL,
+                Result TEXT NOT NULL,
+                Details TEXT
+            );
+            """;
+
+        command.ExecuteNonQuery();
     }
 
     // ==========================================

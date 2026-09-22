@@ -126,7 +126,8 @@ public ControlLabServer(
 
         SendRemoteInputAsync,
         DeleteAgentAsync,
-        _database
+        _database,
+        GetAuthenticatedUsername
     );
 
     _screenStream =
@@ -209,6 +210,49 @@ public ControlLabServer(
         catch
         {
             return false;
+        }
+    }
+
+    private string? GetAuthenticatedUsername(
+        HttpListenerContext context)
+    {
+        try
+        {
+            string? authorization =
+                context.Request.Headers["Authorization"];
+
+            if (string.IsNullOrWhiteSpace(authorization))
+                return null;
+
+            const string prefix = "Bearer ";
+
+            if (!authorization.StartsWith(
+                    prefix,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string sessionToken =
+                authorization[prefix.Length..].Trim();
+
+            if (string.IsNullOrWhiteSpace(sessionToken))
+                return null;
+
+            if (!string.Equals(
+                    sessionToken,
+                    _sessionToken,
+                    StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return _authentication.GetUsername(
+                sessionToken);
+        }
+        catch
+        {
+            return null;
         }
     }
     public async Task StartAsync()
